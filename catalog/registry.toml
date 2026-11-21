@@ -1,0 +1,174 @@
+# Исправления типичных проблем Windows. Формат как у твиков, пункты — [[group.item]].
+# Это разовые действия: отметил → нажал «Виправити».
+# actions — как в privacy.toml. Разблокировка — удаление запрещающих значений политик в HKCU и HKLM;
+# обслуживание — команды run с when = "live" (в образ не попадают).
+
+[[group]]
+name = { uk = "Розблокувати системні інструменти", en = "Unblock system tools" }
+description = { uk = "Віруси та деякі «оптимізатори» вимикають ці інструменти через політики. Тут їх можна повернути.", en = "Malware and some 'optimizers' block these tools through policies. Turn them back on here." }
+icon = "🔓"
+
+[[group.item]]
+id = "fix-taskmgr"
+name = { uk = "Диспетчер завдань", en = "Task Manager" }
+description = { uk = "Прибирає заборону DisableTaskMgr", en = "Removes the DisableTaskMgr block" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\System', name = "DisableTaskMgr", delete = true },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System', name = "DisableTaskMgr", delete = true },
+]
+
+[[group.item]]
+id = "fix-cmd"
+name = { uk = "Командний рядок", en = "Command Prompt" }
+description = { uk = "Прибирає заборону DisableCMD", en = "Removes the DisableCMD block" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Policies\Microsoft\Windows\System', name = "DisableCMD", delete = true },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\System', name = "DisableCMD", delete = true },
+]
+
+[[group.item]]
+id = "fix-regedit"
+name = { uk = "Редактор реєстру", en = "Registry Editor" }
+description = { uk = "Прибирає заборону DisableRegistryTools", en = "Removes the DisableRegistryTools block" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\System', name = "DisableRegistryTools", delete = true },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System', name = "DisableRegistryTools", delete = true },
+]
+
+[[group.item]]
+id = "fix-controlpanel"
+name = { uk = "Панель керування та Параметри", en = "Control Panel and Settings" }
+description = { uk = "Прибирає заборону NoControlPanel", en = "Removes the NoControlPanel block" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer', name = "NoControlPanel", delete = true },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer', name = "NoControlPanel", delete = true },
+]
+
+[[group.item]]
+id = "fix-folderoptions"
+name = { uk = "Параметри папок", en = "Folder Options" }
+description = { uk = "Прибирає заборону NoFolderOptions", en = "Removes the NoFolderOptions block" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer', name = "NoFolderOptions", delete = true },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer', name = "NoFolderOptions", delete = true },
+]
+
+[[group.item]]
+id = "fix-run"
+name = { uk = "Вікно «Виконати» (Win+R)", en = "Run dialog (Win+R)" }
+description = { uk = "Прибирає заборону NoRun", en = "Removes the NoRun block" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer', name = "NoRun", delete = true },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer', name = "NoRun", delete = true },
+]
+
+[[group.item]]
+id = "fix-contextmenu"
+name = { uk = "Контекстне меню (правий клік)", en = "Right-click menu" }
+description = { uk = "Прибирає заборону NoViewContextMenu", en = "Removes the NoViewContextMenu block" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer', name = "NoViewContextMenu", delete = true },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer', name = "NoViewContextMenu", delete = true },
+]
+
+[[group.item]]
+id = "fix-firewall"
+name = { uk = "Брандмауер Windows", en = "Windows Firewall" }
+description = { uk = "Скидає політики, що вимикають брандмауер", en = "Resets policies that turn the firewall off" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall', delete = true },
+]
+
+[[group]]
+name = { uk = "Відновлення Windows", en = "Windows repairs" }
+description = { uk = "Типові проблеми, через які зазвичай перевстановлюють систему.", en = "Common problems that usually end in a reinstall." }
+icon = "🛠"
+
+[[group.item]]
+id = "fix-iconcache"
+name = { uk = "Перебудувати кеш значків", en = "Rebuild the icon cache" }
+description = { uk = "Якщо значки стали білими або неправильними", en = "If icons turned blank or wrong" }
+risk = "safe"
+actions = [
+  { run = 'ie4uinit.exe -show; Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 500; Remove-Item "$env:LOCALAPPDATA\IconCache.db", "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache_*.db" -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 3; if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe }', shell = "powershell", when = "live" },
+]
+
+[[group.item]]
+id = "fix-assoc"
+name = { uk = "Відновити асоціації .exe, .lnk і .bat", en = "Restore .exe, .lnk and .bat associations" }
+description = { uk = "Якщо програми й ярлики не запускаються", en = "If programs and shortcuts won't launch" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Classes\.exe', name = "", sz = "exefile" },
+  { reg = 'HKLM\SOFTWARE\Classes\.exe', name = "Content Type", sz = "application/x-msdownload" },
+  { reg = 'HKLM\SOFTWARE\Classes\exefile\shell\open\command', name = "", sz = '"%1" %*' },
+  { reg = 'HKLM\SOFTWARE\Classes\exefile\shell\open\command', name = "IsolatedCommand", sz = '"%1" %*' },
+  { reg = 'HKLM\SOFTWARE\Classes\.lnk', name = "", sz = "lnkfile" },
+  { reg = 'HKLM\SOFTWARE\Classes\lnkfile', name = "IsShortcut", sz = "" },
+  { reg = 'HKLM\SOFTWARE\Classes\.bat', name = "", sz = "batfile" },
+  { reg = 'HKLM\SOFTWARE\Classes\batfile\shell\open\command', name = "", sz = '"%1" %*' },
+  { reg = 'HKCU\Software\Classes\.exe', delete = true },
+  { reg = 'HKCU\Software\Classes\.lnk', delete = true },
+  { reg = 'HKCU\Software\Classes\.bat', delete = true },
+  { reg = 'HKCU\Software\Classes\exefile', delete = true },
+  { reg = 'HKCU\Software\Classes\lnkfile', delete = true },
+  { reg = 'HKCU\Software\Classes\batfile', delete = true },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.exe\UserChoice', delete = true },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.lnk\UserChoice', delete = true },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.bat\UserChoice', delete = true },
+]
+
+[[group.item]]
+id = "fix-network"
+name = { uk = "Скинути мережеві налаштування", en = "Reset network settings" }
+description = { uk = "Коли інтернет «є, але не працює». Потрібне перезавантаження", en = "When the internet is 'connected but not working'. Needs a restart" }
+risk = "moderate"
+actions = [
+  { run = "netsh winsock reset", when = "live" },
+  { run = "netsh int ip reset", when = "live" },
+  { run = "ipconfig /flushdns", when = "live" },
+]
+
+[[group.item]]
+id = "fix-store"
+name = { uk = "Скинути кеш Microsoft Store", en = "Reset the Microsoft Store cache" }
+description = { uk = "Якщо Store не завантажує застосунки", en = "If the Store won't download apps" }
+risk = "safe"
+actions = [
+  { run = "wsreset.exe", when = "live" },
+]
+
+[[group.item]]
+id = "fix-wu"
+name = { uk = "Скинути компоненти Windows Update", en = "Reset Windows Update components" }
+description = { uk = "Коли оновлення зависають або падають з помилкою", en = "When updates hang or keep failing" }
+risk = "moderate"
+actions = [
+  { run = '$svc = "wuauserv", "bits", "cryptsvc", "usosvc"; Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue; try { foreach ($d in "$env:SystemRoot\SoftwareDistribution", "$env:SystemRoot\System32\catroot2") { if (Test-Path "$d.old") { Remove-Item "$d.old" -Recurse -Force -ErrorAction Stop }; if (Test-Path $d) { Rename-Item -Path $d -NewName ((Split-Path $d -Leaf) + ".old") -ErrorAction Stop } } } finally { Start-Service -Name "cryptsvc", "bits", "wuauserv" -ErrorAction SilentlyContinue }', shell = "powershell", when = "live" },
+]
+
+[[group.item]]
+id = "fix-sfc"
+name = { uk = "Перевірити системні файли (SFC + DISM)", en = "Check system files (SFC + DISM)" }
+description = { uk = "Відновлює пошкоджені файли Windows. Займає 10–20 хвилин", en = "Repairs damaged Windows files. Takes 10–20 minutes" }
+risk = "safe"
+actions = [
+  { run = "DISM /Online /Cleanup-Image /RestoreHealth", when = "live" },
+  { run = "sfc /scannow", when = "live" },
+]

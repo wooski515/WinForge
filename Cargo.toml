@@ -1,0 +1,39 @@
+[package]
+name = "winforge"
+version = "0.1.0"
+edition = "2021"
+description = "Конструктор своей сборки Windows и оптимизатор системы"
+
+[dependencies]
+# wgpu (DirectX 12) — основной рендер: работает даже без драйвера видеокарты
+# (программный WARP). glow (OpenGL) — запасной.
+eframe = { version = "0.31", features = ["wgpu"] }
+# eframe подключает wgpu без бэкенда DirectX 12 (только Vulkan/GL на Windows),
+# а без драйвера видеокарты есть только DX12 через WARP. Включаем его явно.
+# ВАЖНО: в Cargo.lock у gpu-allocator вручную стоит windows 0.58.0 (как у wgpu-hal).
+# Cargo сам выбирает 0.57 (её тянет sysinfo), и тогда DX12 не компилируется.
+# После `cargo update` проверь: cargo tree -i windows@0.58.0 должен показать gpu-allocator.
+wgpu = { version = "24", default-features = false, features = ["dx12"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+sysinfo = "0.33"
+rfd = "0.15"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Threading", "Win32_System_Registry",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[build-dependencies]
+# Вшивает assets/winforge.ico в exe (rc.exe из Windows SDK).
+embed-resource = "3"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true

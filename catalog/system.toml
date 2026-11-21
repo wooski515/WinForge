@@ -1,0 +1,682 @@
+# Оптимизации системы. Формат такой же, как у privacy.toml (поле actions описано там).
+# Пункты безопасности (sec-defender, sec-uac, sec-smartscreen, sec-vbs, sec-bitlocker) намеренно
+# оставлены без actions: защитные механизмы Windows не автоматизируются.
+
+[[group]]
+name = { uk = "Продуктивність", en = "Performance" }
+description = { uk = "Відгук системи та FPS в іграх.", en = "System responsiveness and in-game FPS." }
+
+[[group.tweak]]
+id = "perf-powerplan"
+name = { uk = "План живлення «Максимальна продуктивність»", en = "'Ultimate Performance' power plan" }
+description = { uk = "Процесор не скидає частоти. На ноутбуках — більша витрата батареї", en = "The CPU keeps its clocks up. Drains laptop batteries faster" }
+risk = "safe"
+recommended = true
+actions = [
+  { run = '$b = "e9a42b02-d5df-448d-aa00-03f14749eb61"; $re = "(?i)[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}"; $n = [regex]::Match(((powercfg /query $b) -join " "), "\(([^)]+)\)").Groups[1].Value; $g = powercfg /list | Where-Object { $_ -match $b -or ($n -and $_.Contains("($n)")) } | ForEach-Object { [regex]::Match($_, $re).Value } | Select-Object -First 1; if (-not $g) { $g = [regex]::Match(((powercfg /duplicatescheme $b) -join " "), $re).Value }; if (-not $g) { throw "Ultimate Performance plan is not available on this PC" }; powercfg /setactive $g', undo = "powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e", shell = "powershell" },
+]
+
+[[group.tweak]]
+id = "perf-gamemode"
+name = { uk = "Увімкнути ігровий режим", en = "Enable Game Mode" }
+description = { uk = "Windows надає пріоритет грі", en = "Windows prioritizes the game" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\GameBar', name = "AutoGameModeEnabled", dword = 1 },
+  { reg = 'HKCU\Software\Microsoft\GameBar', name = "AllowAutoGameMode", dword = 1 },
+]
+
+[[group.tweak]]
+id = "perf-hags"
+name = { uk = "Апаратне планування GPU", en = "Hardware-accelerated GPU scheduling" }
+description = { uk = "Менша затримка на сучасних відеокартах", en = "Lower latency on modern graphics cards" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers', name = "HwSchMode", dword = 2 },
+]
+
+[[group.tweak]]
+id = "perf-gamedvr"
+name = { uk = "Вимкнути Xbox Game Bar і фоновий запис (DVR)", en = "Disable Xbox Game Bar and background recording (DVR)" }
+description = { uk = "Фоновий запис ігор забирає FPS", en = "Background game recording costs FPS" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\System\GameConfigStore', name = "GameDVR_Enabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR', name = "AppCaptureEnabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\GameBar', name = "UseNexusForGameBarEnabled", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR', name = "AllowGameDVR", dword = 0 },
+]
+
+[[group.tweak]]
+id = "perf-mouseaccel"
+name = { uk = "Вимкнути прискорення миші", en = "Disable mouse acceleration" }
+description = { uk = "Точне прицілювання: курсор рухається рівно настільки, наскільки миша", en = "Precise aim: the cursor moves exactly as far as the mouse" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Control Panel\Mouse', name = "MouseSpeed", sz = "0" },
+  { reg = 'HKCU\Control Panel\Mouse', name = "MouseThreshold1", sz = "0" },
+  { reg = 'HKCU\Control Panel\Mouse', name = "MouseThreshold2", sz = "0" },
+]
+
+[[group.tweak]]
+id = "perf-animations"
+name = { uk = "Вимкнути зайві анімації", en = "Disable unnecessary animations" }
+description = { uk = "Вікна відкриваються миттєво", en = "Windows open instantly" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Control Panel\Desktop\WindowMetrics', name = "MinAnimate", sz = "0" },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "TaskbarAnimations", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects', name = "VisualFXSetting", dword = 3 },
+  { reg = 'HKCU\Control Panel\Desktop', name = "UserPreferencesMask", binary = "90 12 03 80 10 00 00 00" },
+  { reg = 'HKCU\Control Panel\Desktop', name = "FontSmoothing", sz = "2" },
+]
+
+[[group.tweak]]
+id = "perf-bgapps"
+name = { uk = "Заборонити фонову роботу програм зі Store", en = "Block Store apps from running in the background" }
+description = { uk = "Менше процесів у фоні, але застосунки зі Store можуть перестати надсилати сповіщення", en = "Fewer background processes, but Store apps may stop sending notifications" }
+risk = "moderate"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy', name = "LetAppsRunInBackground", dword = 2 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications', name = "GlobalUserDisabled", dword = 1 },
+]
+
+[[group.tweak]]
+id = "perf-sysmain"
+name = { uk = "Вимкнути SysMain (Superfetch)", en = "Disable SysMain (Superfetch)" }
+description = { uk = "Корисно на HDD, на SSD майже не впливає", en = "Helps on hard drives, barely matters on SSDs" }
+risk = "moderate"
+actions = [
+  { service = "SysMain", start = "disabled" },
+]
+
+[[group.tweak]]
+id = "perf-hibernate"
+name = { uk = "Вимкнути гібернацію", en = "Disable hibernation" }
+description = { uk = "Звільняє місце (hiberfil.sys), але вимикає «Швидкий запуск»", en = "Frees disk space (hiberfil.sys) but turns off Fast Startup" }
+risk = "moderate"
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\Power', name = "HibernateEnabled", dword = 0 },
+  { run = "powercfg /hibernate off", undo = "powercfg /hibernate on", when = "live" },
+]
+
+[[group.tweak]]
+id = "perf-network"
+name = { uk = "Оптимізувати мережу", en = "Optimize network" }
+description = { uk = "Менше обмежень мережі для ігор і мультимедіа", en = "Fewer network limits for games and media" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile', name = "NetworkThrottlingIndex", dword = 0xffffffff },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile', name = "SystemResponsiveness", dword = 0 },
+]
+
+[[group.tweak]]
+id = "perf-faststartup"
+name = { uk = "Вимкнути швидкий запуск", en = "Disable Fast Startup" }
+description = { uk = "Справжнє вимкнення ПК: менше дивних збоїв після оновлень і з другою системою", en = "A real shutdown: fewer odd glitches after updates and with a second OS" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power', name = "HiberbootEnabled", dword = 0 },
+]
+
+[[group]]
+name = { uk = "Служби", en = "Services" }
+description = { uk = "Служби, які більшості людей не потрібні.", en = "Services most people don't need." }
+
+[[group.tweak]]
+id = "svc-fax"
+name = { uk = "Вимкнути службу факсу", en = "Disable the Fax service" }
+description = { uk = "Факс у 2026 році — навряд чи знадобиться", en = "Fax in 2026? Probably not" }
+risk = "safe"
+recommended = true
+actions = [
+  { service = "Fax", start = "disabled" },
+]
+
+[[group.tweak]]
+id = "svc-spooler"
+name = { uk = "Вимкнути службу друку", en = "Disable the Print Spooler" }
+description = { uk = "Лише якщо в тебе немає принтера — інакше друк перестане працювати", en = "Only if you have no printer — otherwise printing stops working" }
+risk = "moderate"
+actions = [
+  { service = "Spooler", start = "disabled" },
+]
+
+[[group.tweak]]
+id = "svc-remotereg"
+name = { uk = "Вимкнути віддалений реєстр", en = "Disable Remote Registry" }
+description = { uk = "Ніхто не зможе змінювати реєстр через мережу", en = "Nobody can edit your registry over the network" }
+risk = "safe"
+recommended = true
+actions = [
+  { service = "RemoteRegistry", start = "disabled" },
+]
+
+[[group.tweak]]
+id = "svc-retaildemo"
+name = { uk = "Вимкнути службу демо-режиму магазину", en = "Disable the Retail Demo service" }
+description = { uk = "Служба для вітринних ПК у магазинах", en = "A service for display PCs in stores" }
+risk = "safe"
+recommended = true
+actions = [
+  { service = "RetailDemo", start = "disabled" },
+]
+
+[[group]]
+name = { uk = "Диски та файлова система", en = "Drives and file system" }
+description = { uk = "Менше зайвих записів на диск і більше вільного місця.", en = "Fewer unnecessary disk writes and more free space." }
+
+[[group.tweak]]
+id = "disk-ntfstime"
+name = { uk = "Вимкнути мітку останнього доступу NTFS", en = "Disable the NTFS last access timestamp" }
+description = { uk = "Windows не записуватиме час кожного відкриття файлу", en = "Windows stops writing a timestamp every time a file is opened" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\FileSystem', name = "NtfsDisableLastAccessUpdate", dword = 1 },
+]
+
+[[group.tweak]]
+id = "disk-8dot3"
+name = { uk = "Вимкнути короткі імена 8.3", en = "Disable 8.3 short file names" }
+description = { uk = "Застарілий формат імен файлів з часів DOS", en = "A legacy file name format from the DOS era" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\FileSystem', name = "NtfsDisable8dot3NameCreation", dword = 1 },
+]
+
+[[group.tweak]]
+id = "disk-restore"
+name = { uk = "Вимкнути точки відновлення", en = "Disable System Restore" }
+description = { uk = "Звільняє місце, але відкотити систему після збою не вийде", en = "Frees space, but you can't roll back after a failure" }
+risk = "moderate"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\SystemRestore', name = "DisableSR", dword = 1 },
+  { task = '\Microsoft\Windows\SystemRestore\SR', enabled = false },
+]
+
+[[group.tweak]]
+id = "disk-reserved"
+name = { uk = "Вимкнути зарезервоване сховище", en = "Disable Reserved Storage" }
+description = { uk = "Повертає ~7 ГБ, які Windows тримає під оновлення", en = "Gives back ~7 GB that Windows keeps for updates" }
+risk = "moderate"
+actions = [
+  { run = "DISM /Online /Set-ReservedStorageState /State:Disabled", undo = "DISM /Online /Set-ReservedStorageState /State:Enabled", when = "live" },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\ReserveManager', name = "ShippedWithReserves", dword = 0, when = "image" },
+]
+
+[[group]]
+name = { uk = "Інтерфейс і Провідник", en = "Interface and File Explorer" }
+description = { uk = "Робимо Windows зручнішою.", en = "Making Windows nicer to use." }
+
+[[group.tweak]]
+id = "ui-classicmenu"
+name = { uk = "Класичне контекстне меню (Windows 11)", en = "Classic context menu (Windows 11)" }
+description = { uk = "Без «Показати додаткові параметри»", en = "No more 'Show more options'" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32', name = "", sz = "" },
+]
+
+[[group.tweak]]
+id = "ui-extensions"
+name = { uk = "Показувати розширення файлів", en = "Show file extensions" }
+description = { uk = "Видно .exe, .txt, .jpg — захищає від «фото.jpg.exe»", en = "See .exe, .txt, .jpg — protects against 'photo.jpg.exe'" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "HideFileExt", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ui-hidden"
+name = { uk = "Показувати приховані файли", en = "Show hidden files" }
+description = { uk = "AppData та інші приховані папки буде видно", en = "AppData and other hidden folders become visible" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "Hidden", dword = 1 },
+]
+
+[[group.tweak]]
+id = "ui-thispc"
+name = { uk = "Провідник відкривається в «Цей комп'ютер»", en = "File Explorer opens to 'This PC'" }
+description = { uk = "Замість «Головної» з нещодавніми файлами", en = "Instead of Home with recent files" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "LaunchTo", dword = 1 },
+]
+
+[[group.tweak]]
+id = "ui-taskbarleft"
+name = { uk = "Кнопка «Пуск» ліворуч", en = "Start button on the left" }
+description = { uk = "Як у Windows 10", en = "Like in Windows 10" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "TaskbarAl", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ui-darkmode"
+name = { uk = "Темна тема", en = "Dark mode" }
+description = { uk = "Для системи та програм", en = "For the system and apps" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize', name = "AppsUseLightTheme", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize', name = "SystemUsesLightTheme", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ui-stickykeys"
+name = { uk = "Вимкнути залипання клавіш (5× Shift)", en = "Disable Sticky Keys (5× Shift)" }
+description = { uk = "Більше ніяких вікон посеред гри", en = "No more pop-ups in the middle of a game" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Control Panel\Accessibility\StickyKeys', name = "Flags", sz = "506" },
+]
+
+[[group.tweak]]
+id = "ui-menudelay"
+name = { uk = "Прибрати затримку відкриття меню", en = "Remove the menu open delay" }
+description = { uk = "Підменю відкриваються одразу", en = "Submenus open instantly" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Control Panel\Desktop', name = "MenuShowDelay", sz = "0" },
+]
+
+[[group.tweak]]
+id = "ui-trayicons"
+name = { uk = "Показувати всі значки в треї", en = "Show all tray icons" }
+description = { uk = "Значки програм біля годинника не ховатимуться", en = "App icons next to the clock won't be hidden" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer', name = "EnableAutoTray", dword = 0 },
+  { run = 'Get-ChildItem "HKCU:\Control Panel\NotifyIconSettings" -ErrorAction SilentlyContinue | ForEach-Object { Set-ItemProperty -LiteralPath $_.PSPath -Name IsPromoted -Value 1 -Type DWord }', undo = 'Get-ChildItem "HKCU:\Control Panel\NotifyIconSettings" -ErrorAction SilentlyContinue | ForEach-Object { Set-ItemProperty -LiteralPath $_.PSPath -Name IsPromoted -Value 0 -Type DWord }', shell = "powershell", when = "live" },
+]
+
+[[group.tweak]]
+id = "ui-utc"
+name = { uk = "Апаратний годинник в UTC", en = "Hardware clock in UTC" }
+description = { uk = "Для dual boot з Linux — час більше не збиватиметься", en = "For dual boot with Linux — the clock stays correct" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\TimeZoneInformation', name = "RealTimeIsUniversal", qword = 1 },
+]
+
+[[group.tweak]]
+id = "ui-hidehome"
+name = { uk = "Прибрати «Головну» і «Галерею» з Провідника", en = "Hide Home and Gallery in File Explorer" }
+description = { uk = "Ліва панель Провідника без нещодавніх файлів і фото", en = "The File Explorer side pane without recent files and photos" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Software\Classes\CLSID\{f874310e-b6b7-47dc-bc84-b9e6b38f5903}', name = "System.IsPinnedToNameSpaceTree", dword = 0 },
+  { reg = 'HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}', name = "System.IsPinnedToNameSpaceTree", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ui-ctxclean"
+name = { uk = "Прибрати зайве з контекстного меню", en = "Declutter the context menu" }
+description = { uk = "«Надати доступ», «Додати до бібліотеки» та «Поділитися»", en = "Give access to, Include in library and Share" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked', name = "{f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}", sz = "" },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked', name = "{3dad6c5d-2167-4cae-9914-f99e41c12cfa}", sz = "" },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked', name = "{e2bf9676-5f8f-435c-97eb-11607a5bedf7}", sz = "" },
+]
+
+[[group.tweak]]
+id = "ui-seconds"
+name = { uk = "Секунди в годиннику", en = "Seconds in the clock" }
+description = { uk = "Годинник на панелі завдань показує секунди", en = "The taskbar clock shows seconds" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "ShowSecondsInSystemClock", dword = 1 },
+]
+
+[[group.tweak]]
+id = "ui-numlock"
+name = { uk = "NumLock увімкнено під час запуску", en = "NumLock on at startup" }
+description = { uk = "Цифровий блок клавіатури працює одразу, і на екрані входу теж", en = "The number pad works right away, on the sign-in screen too" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Control Panel\Keyboard', name = "InitialKeyboardIndicators", sz = "2" },
+  { reg = 'HKU\.DEFAULT\Control Panel\Keyboard', name = "InitialKeyboardIndicators", sz = "2" },
+]
+
+[[group.tweak]]
+id = "ui-longpaths"
+name = { uk = "Дозволити довгі шляхи до файлів", en = "Allow long file paths" }
+description = { uk = "Шляхи довші за 260 символів — потрібно для розробки", en = "Paths longer than 260 characters — needed for development" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\FileSystem', name = "LongPathsEnabled", dword = 1 },
+]
+
+[[group]]
+name = { uk = "Панель завдань і «Пуск»", en = "Taskbar and Start" }
+description = { uk = "Менше кнопок і реклами, більше корисного.", en = "Fewer buttons and ads, more useful stuff." }
+
+[[group.tweak]]
+id = "tb-endtask"
+name = { uk = "«Завершити завдання» в меню панелі завдань", en = "End task in the taskbar menu" }
+description = { uk = "Правий клік по програмі на панелі — і її можна закрити без Диспетчера завдань", en = "Right-click an app on the taskbar to close it without Task Manager" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings', name = "TaskbarEndTask", dword = 1 },
+]
+
+[[group.tweak]]
+id = "tb-searchicon"
+name = { uk = "Пошук на панелі завдань — лише значок", en = "Taskbar search as an icon only" }
+description = { uk = "Широке поле пошуку стане значком, Win+S працює як раніше", en = "The wide search box becomes an icon, Win+S still works" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Search', name = "SearchboxTaskbarMode", dword = 1 },
+  # Windows сбрасывает это значение при первом входе — в образе пишем его ещё раз после входа.
+  { run = 'reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" /v SearchboxTaskbarMode /t REG_DWORD /d 1 /f >nul', when = "image" },
+]
+
+[[group.tweak]]
+id = "tb-taskview"
+name = { uk = "Прибрати кнопку «Подання завдань»", en = "Hide the Task View button" }
+description = { uk = "Віртуальні столи доступні через Win+Tab", en = "Virtual desktops stay available with Win+Tab" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "ShowTaskViewButton", dword = 0 },
+]
+
+[[group.tweak]]
+id = "tb-chat"
+name = { uk = "Прибрати значок «Чат» (Teams)", en = "Hide the Chat (Teams) icon" }
+description = { uk = "Кнопка чату Teams на панелі завдань", en = "The Teams chat button on the taskbar" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "TaskbarMn", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Chat', name = "ChatIcon", dword = 3 },
+]
+
+[[group.tweak]]
+id = "tb-startrec"
+name = { uk = "Прибрати розділ «Рекомендовані» з «Пуску»", en = "Remove the Recommended section from Start" }
+description = { uk = "Без нещодавніх файлів і порад у меню «Пуск»", en = "No recent files and suggestions in the Start menu" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "Start_TrackDocs", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer', name = "HideRecommendedSection", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start', name = "HideRecommendedSection", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Education', name = "IsEducationEnvironment", dword = 1 },
+]
+
+[[group]]
+name = { uk = "Оновлення Windows", en = "Windows Update" }
+description = { uk = "Контроль над тим, коли й що оновлюється.", en = "Control what gets updated and when." }
+
+[[group.tweak]]
+id = "upd-noreboot"
+name = { uk = "Не перезавантажувати автоматично, поки я в системі", en = "Don't restart automatically while I'm signed in" }
+description = { uk = "Оновлення встановлюються, але про перезавантаження вирішуєш ти", en = "Updates install, but you decide when to restart" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU', name = "NoAutoRebootWithLoggedOnUsers", dword = 1 },
+]
+
+[[group.tweak]]
+id = "upd-defer"
+name = { uk = "Відкласти великі оновлення на 365 днів", en = "Defer feature updates for 365 days" }
+description = { uk = "Виправлення безпеки й далі надходитимуть", en = "Security fixes keep coming" }
+risk = "moderate"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name = "DeferFeatureUpdates", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name = "DeferFeatureUpdatesPeriodInDays", dword = 365 },
+]
+
+[[group.tweak]]
+id = "upd-nodrivers"
+name = { uk = "Не встановлювати драйвери через Windows Update", en = "Don't install drivers through Windows Update" }
+description = { uk = "Щоб Windows не замінювала твої драйвери відеокарти", en = "So Windows doesn't replace your graphics drivers" }
+risk = "moderate"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name = "ExcludeWUDriversInQualityUpdate", dword = 1 },
+]
+
+[[group.tweak]]
+id = "upd-disable"
+name = { uk = "Вимкнути служби оновлення Windows (5 служб)", en = "Disable Windows Update services (5 services)" }
+description = { uk = "Повністю зупиняє оновлення", en = "Stops updates completely" }
+risk = "danger"
+warning = { uk = "Система перестане отримувати виправлення безпеки. Microsoft Store і winget можуть працювати з помилками. Через пів року чи рік це часта причина проблем.", en = "The system will stop getting security fixes. Microsoft Store and winget may misbehave. Six months to a year later, this is a common source of problems." }
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU', name = "NoAutoUpdate", dword = 1 },
+  { service = "wuauserv", start = "disabled" },
+  { service = "UsoSvc", start = "disabled" },
+  { service = "WaaSMedicSvc", start = "disabled" },
+  { service = "BITS", start = "disabled" },
+  { service = "DoSvc", start = "disabled" },
+  { task = '\Microsoft\Windows\WindowsUpdate\Scheduled Start', enabled = false },
+  { task = '\Microsoft\Windows\UpdateOrchestrator\Schedule Scan', enabled = false },
+  { task = '\Microsoft\Windows\UpdateOrchestrator\Schedule Scan Static Task', enabled = false },
+  { task = '\Microsoft\Windows\UpdateOrchestrator\USO_UxBroker', enabled = false },
+]
+
+[[group.tweak]]
+id = "upd-p2p"
+name = { uk = "Не роздавати оновлення іншим ПК", en = "Do not share updates with other PCs" }
+description = { uk = "Оптимізація доставки: оновлення лише з серверів Microsoft, без роздачі через інтернет", en = "Delivery Optimization: updates only from Microsoft servers, no peer-to-peer sharing" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization', name = "DODownloadMode", dword = 0 },
+]
+
+[[group]]
+name = { uk = "Безпека", en = "Security" }
+description = { uk = "Вимкнення захисних механізмів. Роби це, лише якщо розумієш наслідки.", en = "Turning off protections. Only do this if you understand the consequences." }
+
+[[group.tweak]]
+id = "sec-bitlocker"
+name = { uk = "Не шифрувати диск автоматично (BitLocker)", en = "Don't encrypt the drive automatically (BitLocker)" }
+description = { uk = "Windows 11 24H2 шифрує диск без запиту, а ключ легко втратити", en = "Windows 11 24H2 encrypts the drive without asking, and the key is easy to lose" }
+risk = "safe"
+recommended = true
+details = ["HKLM\\SYSTEM\\CurrentControlSet\\Control\\BitLocker\\PreventDeviceEncryption = 1"]
+
+[[group.tweak]]
+id = "sec-vbs"
+name = { uk = "Вимкнути VBS / ізоляцію ядра", en = "Disable VBS / Core isolation" }
+description = { uk = "+5–10% FPS у деяких іграх, але слабший захист від експлойтів", en = "+5–10% FPS in some games, but weaker exploit protection" }
+risk = "moderate"
+details = ["HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\EnableVirtualizationBasedSecurity = 0"]
+
+[[group.tweak]]
+id = "sec-smartscreen"
+name = { uk = "Вимкнути SmartScreen", en = "Disable SmartScreen" }
+description = { uk = "Windows перестане перевіряти завантажені файли", en = "Windows stops checking downloaded files" }
+risk = "moderate"
+details = ["HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\EnableSmartScreen = 0"]
+
+[[group.tweak]]
+id = "sec-smb1"
+name = { uk = "Вимкнути застарілий протокол SMBv1", en = "Disable the legacy SMBv1 protocol" }
+description = { uk = "Через нього поширювався WannaCry. Сучасним пристроям він не потрібен", en = "WannaCry spread through it. Modern devices don't need it" }
+risk = "safe"
+recommended = true
+actions = [
+  { feature = "SMB1Protocol", enabled = false },
+]
+
+[[group.tweak]]
+id = "sec-smb2"
+name = { uk = "Вимкнути SMB-сервер (спільні папки цього ПК)", en = "Disable the SMB server (this PC's shared folders)" }
+description = { uk = "Інші пристрої не зможуть відкривати папки цього ПК по мережі", en = "Other devices can no longer open this PC's folders over the network" }
+risk = "danger"
+warning = { uk = "Спільні папки та принтери цього ПК стануть недоступні з інших пристроїв. Доступ із цього ПК до NAS і чужих папок працюватиме далі.", en = "This PC's shared folders and printers become unreachable from other devices. Access from this PC to NAS drives and other computers keeps working." }
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters', name = "SMB2", dword = 0 },
+  { run = "Set-SmbServerConfiguration -EnableSMB2Protocol $false -Force", undo = "Set-SmbServerConfiguration -EnableSMB2Protocol $true -Force", shell = "powershell", when = "live" },
+]
+
+[[group.tweak]]
+id = "sec-defender"
+name = { uk = "Вимкнути антивірус Windows Defender (12 служб)", en = "Disable Windows Defender antivirus (12 services)" }
+description = { uk = "Комп'ютер залишиться без вбудованого захисту", en = "Your PC is left without built-in protection" }
+risk = "danger"
+warning = { uk = "Комп'ютер залишиться без антивіруса. Щоб вимкнути його в робочій системі, спершу вручну вимкни «Захист від втручання» (Tamper Protection). Оновлення Windows можуть знову ввімкнути Defender.", en = "Your PC will have no antivirus. On a running system you first need to turn off Tamper Protection manually. Windows updates may turn Defender back on." }
+details = ["WinDefend", "WdNisSvc", "WdNisDrv", "WdFilter", "WdBoot", "Sense", "SecurityHealthService", "wscsvc", "MDCoreSvc", "webthreatdefsvc", "webthreatdefusersvc", "SgrmBroker"]
+
+[[group.tweak]]
+id = "sec-uac"
+name = { uk = "Вимкнути контроль облікових записів (UAC)", en = "Disable User Account Control (UAC)" }
+description = { uk = "Програми не питатимуть дозволу на права адміністратора", en = "Apps won't ask permission to run as administrator" }
+risk = "danger"
+warning = { uk = "Будь-яка програма, зокрема вірус, отримає права адміністратора без запиту. Деякі програми зі Store перестануть запускатися.", en = "Any program, including malware, gets administrator rights without asking. Some Store apps will stop launching." }
+details = ["HKLM\\...\\Policies\\System\\EnableLUA = 0"]
+
+[[group]]
+name = { uk = "Розширені", en = "Advanced" }
+description = { uk = "Для тих, хто знає, що робить. Деякі пункти потребують перезавантаження.", en = "For people who know what they're doing. Some items need a restart." }
+
+[[group.tweak]]
+id = "adv-regbackup"
+name = { uk = "Автоматичні резервні копії реєстру", en = "Automatic registry backups" }
+description = { uk = "Windows знову зберігатиме копії реєстру в папку RegBack", en = "Windows saves registry copies to the RegBack folder again" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Configuration Manager', name = "EnablePeriodicBackup", dword = 1 },
+  { task = '\Microsoft\Windows\Registry\RegIdleBackup', enabled = true },
+]
+
+[[group.tweak]]
+id = "adv-verbose"
+name = { uk = "Детальні повідомлення під час входу", en = "Verbose sign-in messages" }
+description = { uk = "Видно, на якому етапі завантаження зависає Windows", en = "Shows which step Windows is stuck on during startup" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System', name = "VerboseStatus", dword = 1 },
+]
+
+[[group.tweak]]
+id = "adv-hpet"
+name = { uk = "Вимкнути HPET", en = "Disable HPET" }
+description = { uk = "Іноді зменшує затримку в іграх, але на деяких ПК робить гірше", en = "Sometimes lowers latency in games, but makes things worse on some PCs" }
+risk = "moderate"
+actions = [
+  { run = "bcdedit /deletevalue useplatformclock >nul 2>&1 || exit /b 0" },
+  { run = "bcdedit /set disabledynamictick yes", undo = "bcdedit /deletevalue disabledynamictick" },
+]
+
+[[group.tweak]]
+id = "adv-svchost"
+name = { uk = "Менше процесів svchost", en = "Fewer svchost processes" }
+description = { uk = "Об'єднує служби в менше процесів — корисно, якщо мало ОЗП", en = "Groups services into fewer processes — useful with little RAM" }
+risk = "moderate"
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control', name = "SvcHostSplitThresholdInKB", dword = 0xffffffff },
+]
+
+[[group.tweak]]
+id = "adv-xboxlive"
+name = { uk = "Вимкнути служби Xbox Live", en = "Disable Xbox Live services" }
+description = { uk = "Не вмикай, якщо граєш в ігри з Game Pass або Microsoft Store", en = "Skip this if you play Game Pass or Microsoft Store games" }
+risk = "moderate"
+actions = [
+  { service = "XblAuthManager", start = "disabled" },
+  { service = "XblGameSave", start = "disabled" },
+  { service = "XboxNetApiSvc", start = "disabled" },
+  { service = "XboxGipSvc", start = "disabled" },
+  { task = '\Microsoft\XblGameSave\XblGameSaveTask', enabled = false },
+]
+
+[[group.tweak]]
+id = "adv-ink"
+name = { uk = "Вимкнути Windows Ink", en = "Disable Windows Ink" }
+description = { uk = "Панель для стилуса, якщо в тебе немає пера", en = "The stylus panel, if you don't have a pen" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\WindowsInkWorkspace', name = "AllowWindowsInkWorkspace", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\WindowsInkWorkspace', name = "AllowSuggestedAppsInWindowsInkWorkspace", dword = 0 },
+]
+
+[[group.tweak]]
+id = "adv-wpbt"
+name = { uk = "Не дозволяти прошивці ПК встановлювати програми (WPBT)", en = "Do not let the PC firmware install programs (WPBT)" }
+description = { uk = "Деякі виробники через BIOS тихо ставлять свої утиліти в Windows", en = "Some PC makers silently install their tools into Windows from the BIOS" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager', name = "DisableWpbtExecution", dword = 1 },
+]
+
+[[group]]
+name = { uk = "Компоненти Windows", en = "Windows components" }
+description = { uk = "Увімкнути потрібні компоненти, яких немає за замовчуванням.", en = "Turn on useful components that are off by default." }
+
+[[group.tweak]]
+id = "feat-netfx3"
+name = { uk = ".NET Framework 3.5", en = ".NET Framework 3.5" }
+description = { uk = "Потрібен старим програмам та іграм", en = "Needed by older apps and games" }
+risk = "safe"
+actions = [
+  { feature = "NetFx3", enabled = true },
+]
+
+[[group.tweak]]
+id = "feat-wsl"
+name = { uk = "Підсистема Windows для Linux (WSL)", en = "Windows Subsystem for Linux (WSL)" }
+description = { uk = "Linux у Windows. Потрібна увімкнена віртуалізація в BIOS", en = "Linux inside Windows. Needs virtualization enabled in the BIOS" }
+risk = "safe"
+actions = [
+  { feature = "Microsoft-Windows-Subsystem-Linux", enabled = true },
+  { feature = "VirtualMachinePlatform", enabled = true },
+]
+
+[[group.tweak]]
+id = "feat-sandbox"
+name = { uk = "Пісочниця Windows", en = "Windows Sandbox" }
+description = { uk = "Одноразова чиста Windows у вікні для підозрілих файлів. Лише Pro і вище", en = "A throwaway clean Windows in a window for suspicious files. Pro and above only" }
+risk = "safe"
+actions = [
+  { feature = "Containers-DisposableClientVM", enabled = true },
+]
+
+[[group.tweak]]
+id = "feat-hyperv"
+name = { uk = "Hyper-V", en = "Hyper-V" }
+description = { uk = "Вбудовані віртуальні машини Windows. Лише Pro і вище", en = "Built-in Windows virtual machines. Pro and above only" }
+risk = "moderate"
+warning = { uk = "VirtualBox і VMware з увімкненим Hyper-V працюють помітно повільніше.", en = "VirtualBox and VMware run noticeably slower with Hyper-V on." }
+actions = [
+  { feature = "Microsoft-Hyper-V-All", enabled = true },
+]
+
+[[group]]
+name = { uk = "Мережа", en = "Network" }
+description = { uk = "Протоколи, які рідко потрібні вдома.", en = "Protocols rarely needed at home." }
+
+[[group.tweak]]
+id = "net-ipv4pref"
+name = { uk = "Надавати перевагу IPv4 над IPv6", en = "Prefer IPv4 over IPv6" }
+description = { uk = "Допомагає, коли сайти довго відкриваються через поганий IPv6 у провайдера", en = "Helps when sites load slowly because of poor ISP IPv6" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters', name = "DisabledComponents", dword = 32 },
+]
+
+[[group.tweak]]
+id = "net-teredo"
+name = { uk = "Вимкнути Teredo", en = "Disable Teredo" }
+description = { uk = "Тунель IPv6 через IPv4, який вдома майже ніколи не потрібен", en = "An IPv6-over-IPv4 tunnel that is almost never needed at home" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\TCPIP\v6Transition', name = "Teredo_State", sz = "Disabled" },
+]

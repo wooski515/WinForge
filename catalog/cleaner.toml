@@ -1,0 +1,378 @@
+# Что можно очистить. Формат как у твиков, но пункты называются [[group.item]].
+# size_mb — примерный объём для демо-анализа (настоящий анализ посчитает реальный размер).
+# paths         — что очищать (литеральные строки '...'). Раскрываются %TEMP%, %LOCALAPPDATA%, %APPDATA%,
+#                 %WINDIR%, %PROGRAMDATA%, %USERPROFILE%, %SystemDrive%; * — маска внутри части пути.
+#                 Путь к папке — удаляется её содержимое, сама папка остаётся; маска файлов — удаляются
+#                 эти файлы; занятые файлы пропускаются.
+# stop_services — службы, которые остановить перед очисткой и снова запустить после
+# recycle       — true: очистить корзину (paths не нужны)
+
+[[group]]
+name = "Windows"
+icon = "💻"
+
+[[group.item]]
+id = "clean-temp"
+name = { uk = "Тимчасові файли", en = "Temporary files" }
+description = "%TEMP%, C:\\Windows\\Temp"
+risk = "safe"
+recommended = true
+details = ["%TEMP%\\*", "C:\\Windows\\Temp\\*"]
+paths = [
+  '%TEMP%',
+  '%WINDIR%\Temp',
+]
+
+[[group.item]]
+id = "clean-wucache"
+name = { uk = "Кеш Windows Update", en = "Windows Update cache" }
+description = { uk = "Пакети вже встановлених оновлень", en = "Packages of updates that are already installed" }
+risk = "safe"
+recommended = true
+details = ["C:\\Windows\\SoftwareDistribution\\Download\\*"]
+stop_services = ["wuauserv", "bits"]
+paths = [
+  '%WINDIR%\SoftwareDistribution\Download',
+]
+
+[[group.item]]
+id = "clean-delivery"
+name = { uk = "Кеш оптимізації доставки", en = "Delivery Optimization cache" }
+description = { uk = "Файли оновлень, якими Windows ділиться з іншими ПК", en = "Update files Windows shares with other PCs" }
+risk = "safe"
+recommended = true
+details = ["C:\\Windows\\ServiceProfiles\\NetworkService\\AppData\\Local\\Microsoft\\Windows\\DeliveryOptimization\\Cache"]
+stop_services = ["DoSvc"]
+paths = [
+  '%WINDIR%\ServiceProfiles\NetworkService\AppData\Local\Microsoft\Windows\DeliveryOptimization\Cache',
+]
+
+[[group.item]]
+id = "clean-minidump"
+name = { uk = "Дампи BSOD", en = "BSOD minidumps" }
+description = { uk = "Звіти про сині екрани — потрібні лише для діагностики", en = "Blue screen reports — only needed for troubleshooting" }
+risk = "safe"
+recommended = true
+details = ["C:\\Windows\\Minidump\\*", "C:\\Windows\\MEMORY.DMP"]
+paths = [
+  '%WINDIR%\Minidump',
+  '%WINDIR%\MEMORY.DMP',
+  '%WINDIR%\LiveKernelReports\*.dmp',
+  '%WINDIR%\LiveKernelReports\*\*.dmp',
+]
+
+[[group.item]]
+id = "clean-wer"
+name = { uk = "Звіти про помилки", en = "Error reports" }
+description = { uk = "Збережені звіти Windows Error Reporting", en = "Saved Windows Error Reporting files" }
+risk = "safe"
+recommended = true
+details = ["C:\\ProgramData\\Microsoft\\Windows\\WER\\*"]
+paths = [
+  '%PROGRAMDATA%\Microsoft\Windows\WER\ReportArchive',
+  '%PROGRAMDATA%\Microsoft\Windows\WER\ReportQueue',
+  '%PROGRAMDATA%\Microsoft\Windows\WER\Temp',
+  '%LOCALAPPDATA%\Microsoft\Windows\WER\ReportArchive',
+  '%LOCALAPPDATA%\Microsoft\Windows\WER\ReportQueue',
+]
+
+[[group.item]]
+id = "clean-thumbs"
+name = { uk = "Кеш мініатюр", en = "Thumbnail cache" }
+description = { uk = "Створиться заново, коли відкриєш папки", en = "Rebuilt automatically when you browse folders" }
+risk = "safe"
+recommended = true
+details = ["%LOCALAPPDATA%\\Microsoft\\Windows\\Explorer\\thumbcache_*.db"]
+paths = [
+  '%LOCALAPPDATA%\Microsoft\Windows\Explorer\thumbcache_*.db',
+]
+
+[[group.item]]
+id = "clean-logs"
+name = { uk = "Журнали Windows", en = "Windows logs" }
+description = { uk = "Старі логи CBS, DISM і встановлення", en = "Old CBS, DISM and setup logs" }
+risk = "safe"
+details = ["C:\\Windows\\Logs\\CBS\\*", "C:\\Windows\\Logs\\DISM\\*"]
+paths = [
+  '%WINDIR%\Logs\CBS',
+  '%WINDIR%\Logs\DISM',
+  '%WINDIR%\Panther\*.log',
+]
+
+[[group.item]]
+id = "clean-recycle"
+name = { uk = "Очистити кошик", en = "Empty Recycle Bin" }
+description = { uk = "Файли з кошика буде видалено назавжди", en = "Files in the Recycle Bin are deleted for good" }
+risk = "moderate"
+details = ["Clear-RecycleBin -Force"]
+recycle = true
+
+[[group]]
+name = "Google Chrome"
+icon = "🌐"
+
+[[group.item]]
+id = "clean-chrome-cache"
+name = { uk = "Кеш", en = "Cache" }
+description = { uk = "Сайти завантажаться трохи повільніше перший раз", en = "Sites load a bit slower the first time" }
+risk = "safe"
+recommended = true
+paths = [
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Cache',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Code Cache',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\GPUCache',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\ShaderCache',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\GrShaderCache',
+]
+
+[[group.item]]
+id = "clean-chrome-cookies"
+name = { uk = "Файли cookie", en = "Cookies" }
+description = { uk = "Вийдеш з усіх сайтів", en = "Signs you out of every site" }
+risk = "moderate"
+paths = [
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Network\Cookies',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Network\Cookies-journal',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Cookies',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Cookies-journal',
+]
+
+[[group.item]]
+id = "clean-chrome-history"
+name = { uk = "Історія", en = "History" }
+description = { uk = "Історія відвідувань і завантажень", en = "Browsing and download history" }
+risk = "moderate"
+paths = [
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\History',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\History-journal',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Visited Links',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Top Sites',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Top Sites-journal',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Shortcuts',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Shortcuts-journal',
+]
+
+[[group.item]]
+id = "clean-chrome-session"
+name = { uk = "Сеанс", en = "Session" }
+description = { uk = "Забуде вкладки, відкриті минулого разу", en = "Forgets the tabs from last time" }
+risk = "moderate"
+paths = [
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Sessions',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Current Session',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Current Tabs',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Last Session',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Last Tabs',
+]
+
+[[group.item]]
+id = "clean-chrome-passwords"
+name = { uk = "Паролі", en = "Passwords" }
+description = { uk = "Збережені в браузері паролі", en = "Passwords saved in the browser" }
+risk = "danger"
+warning = { uk = "Усі збережені в Chrome паролі буде видалено. Якщо вони не синхронізовані з акаунтом Google, відновити їх не вийде.", en = "All passwords saved in Chrome will be deleted. If they aren't synced to a Google account, they can't be recovered." }
+paths = [
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Login Data',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Login Data-journal',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Login Data For Account',
+  '%LOCALAPPDATA%\Google\Chrome\User Data\*\Login Data For Account-journal',
+]
+
+[[group]]
+name = "Mozilla Firefox"
+icon = "🌐"
+
+[[group.item]]
+id = "clean-firefox-cache"
+name = { uk = "Кеш", en = "Cache" }
+description = { uk = "Сайти завантажаться трохи повільніше перший раз", en = "Sites load a bit slower the first time" }
+risk = "safe"
+recommended = true
+paths = [
+  '%LOCALAPPDATA%\Mozilla\Firefox\Profiles\*\cache2',
+  '%LOCALAPPDATA%\Mozilla\Firefox\Profiles\*\startupCache',
+  '%LOCALAPPDATA%\Mozilla\Firefox\Profiles\*\thumbnails',
+]
+
+[[group.item]]
+id = "clean-firefox-cookies"
+name = { uk = "Файли cookie", en = "Cookies" }
+description = { uk = "Вийдеш з усіх сайтів", en = "Signs you out of every site" }
+risk = "moderate"
+paths = [
+  '%APPDATA%\Mozilla\Firefox\Profiles\*\cookies.sqlite*',
+]
+
+# История Firefox хранится в places.sqlite вместе с закладками —
+# безопасно удалить её на уровне файлов нельзя, поэтому пункта нет.
+
+[[group]]
+name = "Microsoft Edge"
+icon = "🌐"
+
+[[group.item]]
+id = "clean-edge-cache"
+name = { uk = "Кеш", en = "Cache" }
+description = { uk = "Сайти завантажаться трохи повільніше перший раз", en = "Sites load a bit slower the first time" }
+risk = "safe"
+recommended = true
+paths = [
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Cache',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Code Cache',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\GPUCache',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\ShaderCache',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\GrShaderCache',
+]
+
+[[group.item]]
+id = "clean-edge-cookies"
+name = { uk = "Файли cookie", en = "Cookies" }
+description = { uk = "Вийдеш з усіх сайтів", en = "Signs you out of every site" }
+risk = "moderate"
+paths = [
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Network\Cookies',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Network\Cookies-journal',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Cookies',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Cookies-journal',
+]
+
+[[group.item]]
+id = "clean-edge-history"
+name = { uk = "Історія", en = "History" }
+description = { uk = "Історія відвідувань і завантажень", en = "Browsing and download history" }
+risk = "moderate"
+paths = [
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\History',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\History-journal',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Visited Links',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Top Sites',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Top Sites-journal',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Shortcuts',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Shortcuts-journal',
+]
+
+[[group.item]]
+id = "clean-edge-session"
+name = { uk = "Сеанс", en = "Session" }
+description = { uk = "Забуде вкладки, відкриті минулого разу", en = "Forgets the tabs from last time" }
+risk = "moderate"
+paths = [
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Sessions',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Current Session',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Current Tabs',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Last Session',
+  '%LOCALAPPDATA%\Microsoft\Edge\User Data\*\Last Tabs',
+]
+
+[[group]]
+name = "Brave"
+icon = "🌐"
+
+[[group.item]]
+id = "clean-brave-cache"
+name = { uk = "Кеш", en = "Cache" }
+description = { uk = "Сайти завантажаться трохи повільніше перший раз", en = "Sites load a bit slower the first time" }
+risk = "safe"
+recommended = true
+paths = [
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Cache',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Code Cache',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\GPUCache',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\ShaderCache',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\GrShaderCache',
+]
+
+[[group.item]]
+id = "clean-brave-cookies"
+name = { uk = "Файли cookie", en = "Cookies" }
+description = { uk = "Вийдеш з усіх сайтів", en = "Signs you out of every site" }
+risk = "moderate"
+paths = [
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Network\Cookies',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Network\Cookies-journal',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Cookies',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Cookies-journal',
+]
+
+[[group.item]]
+id = "clean-brave-history"
+name = { uk = "Історія", en = "History" }
+description = { uk = "Історія відвідувань і завантажень", en = "Browsing and download history" }
+risk = "moderate"
+paths = [
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\History',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\History-journal',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Visited Links',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Top Sites',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Top Sites-journal',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Shortcuts',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Shortcuts-journal',
+]
+
+[[group.item]]
+id = "clean-brave-passwords"
+name = { uk = "Паролі", en = "Passwords" }
+description = { uk = "Збережені в браузері паролі", en = "Passwords saved in the browser" }
+risk = "danger"
+warning = { uk = "Усі збережені в Brave паролі буде видалено. Якщо вони не синхронізовані, відновити їх не вийде.", en = "All passwords saved in Brave will be deleted. If they aren't synced, they can't be recovered." }
+paths = [
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Login Data',
+  '%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\*\Login Data-journal',
+]
+
+[[group]]
+name = { uk = "Програми", en = "Apps" }
+icon = "🎮"
+
+[[group.item]]
+id = "clean-discord"
+name = { uk = "Кеш Discord", en = "Discord cache" }
+description = { uk = "Картинки й відео з чатів", en = "Images and videos from chats" }
+risk = "safe"
+recommended = true
+details = ["%APPDATA%\\discord\\Cache", "%APPDATA%\\discord\\Code Cache"]
+paths = [
+  '%APPDATA%\discord\Cache',
+  '%APPDATA%\discord\Code Cache',
+  '%APPDATA%\discord\GPUCache',
+]
+
+[[group.item]]
+id = "clean-steam"
+name = { uk = "Веб-кеш Steam", en = "Steam web cache" }
+description = { uk = "Кеш вбудованого браузера Steam", en = "Steam's built-in browser cache" }
+risk = "safe"
+recommended = true
+details = ["%LOCALAPPDATA%\\Steam\\htmlcache"]
+paths = [
+  '%LOCALAPPDATA%\Steam\htmlcache',
+]
+
+[[group.item]]
+id = "clean-telegram"
+name = { uk = "Медіакеш Telegram", en = "Telegram media cache" }
+description = { uk = "Фото й відео з чатів завантажаться знову", en = "Chat photos and videos will download again" }
+risk = "moderate"
+details = ["%APPDATA%\\Telegram Desktop\\tdata\\user_data"]
+paths = [
+  '%APPDATA%\Telegram Desktop\tdata\user_data*\cache',
+  '%APPDATA%\Telegram Desktop\tdata\user_data*\media_cache',
+]
+
+[[group.item]]
+id = "clean-shadercache"
+name = { uk = "Кеш шейдерів відеокарти", en = "GPU shader cache" }
+description = { uk = "Ігри перший раз запускатимуться трохи довше", en = "Games take a little longer to load the first time" }
+risk = "moderate"
+details = ["%LOCALAPPDATA%\\NVIDIA\\DXCache", "%LOCALAPPDATA%\\D3DSCache"]
+paths = [
+  '%LOCALAPPDATA%\NVIDIA\DXCache',
+  '%LOCALAPPDATA%\NVIDIA\GLCache',
+  '%USERPROFILE%\AppData\LocalLow\NVIDIA\PerDriverVersion\DXCache',
+  '%LOCALAPPDATA%\D3DSCache',
+  '%LOCALAPPDATA%\AMD\DxCache',
+  '%LOCALAPPDATA%\AMD\DxcCache',
+  '%LOCALAPPDATA%\AMD\GLCache',
+  '%LOCALAPPDATA%\AMD\VkCache',
+  '%LOCALAPPDATA%\Intel\ShaderCache',
+]

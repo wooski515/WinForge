@@ -1,0 +1,8 @@
+# Скрипты Windows — всегда с CRLF, иначе cmd.exe спотыкается.
+*.cmd text eol=crlf
+*.rc  text eol=crlf
+*.ps1 text eol=crlf
+# Сырые пиксели иконки и картинки — двоичные.
+*.rgba binary
+*.ico  binary
+*.png  binary

@@ -1,0 +1,125 @@
+# Пункты, которые добавляются в контекстное меню Windows. Формат как у твиков.
+# actions — как в privacy.toml. Всё пишется в HKCU\Software\Classes (только для текущего пользователя,
+# без прав администратора), имена разделов начинаются с «WinForge.», чтобы их было легко найти.
+# Пункты с правами администратора запрашивают UAC через Start-Process -Verb RunAs.
+
+[[group]]
+name = { uk = "Меню файлів і папок", en = "File and folder menu" }
+description = { uk = "З'являються після правого кліку по файлу або папці.", en = "Appear when you right-click a file or folder." }
+
+[[group.item]]
+id = "int-cmdhere"
+name = { uk = "Відкрити командний рядок тут", en = "Open command prompt here" }
+description = { uk = "Термінал одразу в потрібній папці", en = "A terminal right in the current folder" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Classes\Directory\Background\shell\WinForge.CmdHere', name = "MUIVerb", sz = "@shell32.dll,-8506" },
+  { reg = 'HKCU\Software\Classes\Directory\Background\shell\WinForge.CmdHere', name = "Icon", sz = "cmd.exe" },
+  { reg = 'HKCU\Software\Classes\Directory\Background\shell\WinForge.CmdHere\command', name = "", sz = 'cmd.exe /s /k pushd "%V"' },
+  { reg = 'HKCU\Software\Classes\Directory\shell\WinForge.CmdHere', name = "MUIVerb", sz = "@shell32.dll,-8506" },
+  { reg = 'HKCU\Software\Classes\Directory\shell\WinForge.CmdHere', name = "Icon", sz = "cmd.exe" },
+  { reg = 'HKCU\Software\Classes\Directory\shell\WinForge.CmdHere\command', name = "", sz = 'cmd.exe /s /k pushd "%V"' },
+]
+
+[[group.item]]
+id = "int-pwshadmin"
+name = { uk = "PowerShell від адміністратора тут", en = "PowerShell as administrator here" }
+description = { uk = "Те саме, але з правами адміністратора", en = "The same, with administrator rights" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Software\Classes\Directory\Background\shell\WinForge.PwshAdmin', name = "MUIVerb", sz = "Open PowerShell here as administrator" },
+  { reg = 'HKCU\Software\Classes\Directory\Background\shell\WinForge.PwshAdmin', name = "Icon", sz = "powershell.exe" },
+  { reg = 'HKCU\Software\Classes\Directory\Background\shell\WinForge.PwshAdmin', name = "HasLUAShield", sz = "" },
+  { reg = 'HKCU\Software\Classes\Directory\Background\shell\WinForge.PwshAdmin\command', name = "", sz = '''cmd.exe /c set "WF_P=%V" && powershell.exe -NoProfile -WindowStyle Hidden -Command "$d = $env:WF_P -replace [char]39, ([string][char]39 * 2); Start-Process powershell.exe -Verb RunAs -ArgumentList ('-NoExit -Command ' + [char]34 + 'Set-Location -LiteralPath ' + [char]39 + $d + [char]39 + [char]34)"''' },
+]
+
+[[group.item]]
+id = "int-takeown"
+name = { uk = "Стати власником", en = "Take ownership" }
+description = { uk = "Повний доступ до файлу, який Windows не дає змінити", en = "Full access to a file Windows won't let you change" }
+risk = "moderate"
+actions = [
+  { reg = 'HKCU\Software\Classes\*\shell\WinForge.TakeOwnership', name = "MUIVerb", sz = "Take ownership" },
+  { reg = 'HKCU\Software\Classes\*\shell\WinForge.TakeOwnership', name = "HasLUAShield", sz = "" },
+  { reg = 'HKCU\Software\Classes\*\shell\WinForge.TakeOwnership', name = "NoWorkingDirectory", sz = "" },
+  { reg = 'HKCU\Software\Classes\*\shell\WinForge.TakeOwnership\command', name = "", sz = '''cmd.exe /c set "WF_P=%1" && powershell.exe -NoProfile -WindowStyle Hidden -Command "$q = [char]34; Start-Process cmd.exe -Verb RunAs -ArgumentList ('/c takeown /f ' + $q + $env:WF_P + $q + ' && icacls ' + $q + $env:WF_P + $q + ' /grant *S-1-5-32-544:F /c /l')"''' },
+  { reg = 'HKCU\Software\Classes\Directory\shell\WinForge.TakeOwnership', name = "MUIVerb", sz = "Take ownership" },
+  { reg = 'HKCU\Software\Classes\Directory\shell\WinForge.TakeOwnership', name = "HasLUAShield", sz = "" },
+  { reg = 'HKCU\Software\Classes\Directory\shell\WinForge.TakeOwnership', name = "NoWorkingDirectory", sz = "" },
+  { reg = 'HKCU\Software\Classes\Directory\shell\WinForge.TakeOwnership', name = "AppliesTo", sz = 'NOT (System.ItemPathDisplay:="C:\Users" OR System.ItemPathDisplay:="C:\ProgramData" OR System.ItemPathDisplay:="C:\Windows" OR System.ItemPathDisplay:="C:\Windows\System32" OR System.ItemPathDisplay:="C:\Program Files" OR System.ItemPathDisplay:="C:\Program Files (x86)")' },
+  { reg = 'HKCU\Software\Classes\Directory\shell\WinForge.TakeOwnership\command', name = "", sz = '''cmd.exe /c set "WF_P=%1" && powershell.exe -NoProfile -WindowStyle Hidden -Command "$q = [char]34; $y = ($null | choice).Substring(1,1); Start-Process cmd.exe -Verb RunAs -ArgumentList ('/c takeown /f ' + $q + $env:WF_P + $q + ' /r /d ' + $y + ' && icacls ' + $q + $env:WF_P + $q + ' /grant *S-1-5-32-544:F /t /c /l /q')"''' },
+]
+
+[[group.item]]
+id = "int-hash"
+name = { uk = "Обчислити хеш (SHA-256)", en = "Calculate hash (SHA-256)" }
+description = { uk = "Перевірити, що файл завантажився без пошкоджень", en = "Check that a download isn't corrupted" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Software\Classes\*\shell\WinForge.Hash', name = "MUIVerb", sz = "Calculate hash (SHA-256)" },
+  { reg = 'HKCU\Software\Classes\*\shell\WinForge.Hash', name = "Icon", sz = "powershell.exe" },
+  { reg = 'HKCU\Software\Classes\*\shell\WinForge.Hash\command', name = "", sz = 'cmd.exe /c set "WF_P=%1" && powershell.exe -NoProfile -NoExit -Command "$h = Get-FileHash -Algorithm SHA256 -LiteralPath $env:WF_P; $h | Format-List Algorithm, Hash, Path; Set-Clipboard -Value $h.Hash"' },
+]
+
+[[group.item]]
+id = "int-copypath"
+name = { uk = "Копіювати повний шлях", en = "Copy full path" }
+description = { uk = "Шлях до файлу одразу в буфер обміну", en = "Puts the file path straight into the clipboard" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Classes\*\shell\WinForge.CopyPath', name = "MUIVerb", sz = "Copy full path" },
+  { reg = 'HKCU\Software\Classes\*\shell\WinForge.CopyPath\command', name = "", sz = 'cmd.exe /c set "WF_P=%1" && powershell.exe -NoProfile -WindowStyle Hidden -Command "Set-Clipboard -Value $env:WF_P"' },
+  { reg = 'HKCU\Software\Classes\Directory\shell\WinForge.CopyPath', name = "MUIVerb", sz = "Copy full path" },
+  { reg = 'HKCU\Software\Classes\Directory\shell\WinForge.CopyPath\command', name = "", sz = 'cmd.exe /c set "WF_P=%1" && powershell.exe -NoProfile -WindowStyle Hidden -Command "Set-Clipboard -Value $env:WF_P"' },
+]
+
+[[group]]
+name = { uk = "Меню робочого столу", en = "Desktop menu" }
+description = { uk = "З'являються після правого кліку на порожньому місці робочого столу.", en = "Appear when you right-click an empty spot on the desktop." }
+
+[[group.item]]
+id = "int-restartexplorer"
+name = { uk = "Перезапустити Провідник", en = "Restart Explorer" }
+description = { uk = "Якщо панель завдань або меню «Пуск» зависли", en = "When the taskbar or Start menu freezes" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Classes\DesktopBackground\Shell\WinForge.RestartExplorer', name = "MUIVerb", sz = "Restart Explorer" },
+  { reg = 'HKCU\Software\Classes\DesktopBackground\Shell\WinForge.RestartExplorer', name = "Icon", sz = "explorer.exe" },
+  { reg = 'HKCU\Software\Classes\DesktopBackground\Shell\WinForge.RestartExplorer\command', name = "", sz = 'powershell.exe -NoProfile -WindowStyle Hidden -Command "Stop-Process -Name explorer -Force; Start-Sleep -Seconds 3; if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe }"' },
+]
+
+[[group.item]]
+id = "int-safemode"
+name = { uk = "Перезавантажити в безпечний режим", en = "Restart into Safe Mode" }
+description = { uk = "Без пошуку потрібного пункту в налаштуваннях", en = "No digging through settings" }
+risk = "moderate"
+actions = [
+  { reg = 'HKCU\Software\Classes\DesktopBackground\Shell\WinForge.SafeMode', name = "MUIVerb", sz = "Restart into Safe Mode" },
+  { reg = 'HKCU\Software\Classes\DesktopBackground\Shell\WinForge.SafeMode', name = "HasLUAShield", sz = "" },
+  { reg = 'HKCU\Software\Classes\DesktopBackground\Shell\WinForge.SafeMode\command', name = "", sz = '''powershell.exe -NoProfile -WindowStyle Hidden -Command "Add-Type -AssemblyName PresentationFramework; $m = 'Restart into Safe Mode in 10 seconds? Save your work first. The next restart after that returns Windows to normal mode.'; if ([System.Windows.MessageBox]::Show($m, 'WinForge', 'YesNo', 'Warning') -eq 'Yes') { Start-Process cmd.exe -Verb RunAs -ArgumentList '/c bcdedit /set {current} safeboot minimal && reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce /v *WinForgeSafeModeOff /t REG_SZ /d \"bcdedit /deletevalue {current} safeboot\" /f && shutdown /r /t 10' }"''' },
+]
+
+[[group.item]]
+id = "int-godmode"
+name = { uk = "Режим бога (усі налаштування)", en = "God Mode (all settings)" }
+description = { uk = "Одна папка з усіма параметрами Windows", en = "One folder with every Windows setting" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Software\Classes\DesktopBackground\Shell\WinForge.GodMode', name = "MUIVerb", sz = "God Mode" },
+  { reg = 'HKCU\Software\Classes\DesktopBackground\Shell\WinForge.GodMode', name = "Icon", sz = "control.exe" },
+  { reg = 'HKCU\Software\Classes\DesktopBackground\Shell\WinForge.GodMode\command', name = "", sz = "explorer.exe shell:::{ED7BA470-8E54-465E-825C-99712043E01C}" },
+]
+
+[[group.item]]
+id = "int-sysinfo"
+name = { uk = "Інформація про систему", en = "System information" }
+description = { uk = "Швидкий доступ до msinfo32", en = "Quick access to msinfo32" }
+risk = "safe"
+actions = [
+  { reg = 'HKCU\Software\Classes\DesktopBackground\Shell\WinForge.SysInfo', name = "MUIVerb", sz = "System information" },
+  { reg = 'HKCU\Software\Classes\DesktopBackground\Shell\WinForge.SysInfo', name = "Icon", sz = "msinfo32.exe" },
+  { reg = 'HKCU\Software\Classes\DesktopBackground\Shell\WinForge.SysInfo\command', name = "", sz = "msinfo32.exe" },
+]

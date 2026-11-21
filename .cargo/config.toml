@@ -1,0 +1,4 @@
+# WinForge запускают на только что установленной Windows, где ещё нет
+# Visual C++ Redistributable (VCRUNTIME140.dll). Поэтому C-рантайм вшиваем в exe.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

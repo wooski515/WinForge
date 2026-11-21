@@ -1,0 +1,863 @@
+# Встроенные приложения и компоненты Windows, которые можно удалить.
+# Страница «Удаление» показывает пункты по разделам [[group]] в их порядке;
+# у каждого пункта group = "<id раздела>".
+# package — понятное описание пакетов для интерфейса (на действия не влияет)
+# actions — как в privacy.toml:
+#   { appx = "Microsoft.X" }   удалить пакет у всех пользователей и из образа (без отката);
+#                              можно с масками: '*CandyCrush*'
+#   { capability = "Microsoft.Windows.WordPad" }   старая возможность Windows (все версии и языки);
+#                              откат — вернуть удалённое через Windows Update
+#   OneDrive и Edge удаляются собственными деинсталляторами через run.
+# Тексты на двух языках: name = { uk = "...", en = "..." }
+
+[[group]]
+id = "ms"
+icon = "🗑"
+name = { uk = "Застосунки Microsoft", en = "Microsoft apps" }
+description = { uk = "Те, що Windows ставить сама. Зелені пункти можна видаляти сміливо.", en = "What Windows installs on its own. Green items are safe to remove." }
+
+[[group]]
+id = "partners"
+icon = "📢"
+name = { uk = "Реклама від партнерів", en = "Partner promotions" }
+description = { uk = "Ігри та пробні програми, які Microsoft і виробники ПК підсовують у «Пуск».", en = "Games and trial apps that Microsoft and PC makers push into Start." }
+
+[[group]]
+id = "oem"
+icon = "💻"
+name = { uk = "Утиліти виробників ноутбуків", en = "Laptop maker utilities" }
+description = { uk = "Мають сенс лише на вже встановленій системі: у чистому образі їх немає.", en = "Only matter on an installed system: a clean image doesn't have them." }
+
+[[group]]
+id = "legacy"
+icon = "🧩"
+name = { uk = "Старі компоненти Windows", en = "Legacy Windows components" }
+description = { uk = "Застарілі програми, які досі займають місце. Повернути можна в «Додаткових компонентах».", en = "Outdated programs that still take up space. You can bring them back in Optional features." }
+
+[[app]]
+id = "rm-xbox"
+name = { uk = "Застосунки Xbox", en = "Xbox apps" }
+package = "Microsoft.GamingApp, Microsoft.XboxGamingOverlay, ..."
+risk = "moderate"
+group = "ms"
+warning = { uk = "Не видаляй, якщо користуєшся Game Pass або іграми з Microsoft Store.", en = "Keep these if you use Game Pass or games from the Microsoft Store." }
+actions = [
+  { appx = "Microsoft.GamingApp" },
+  { appx = "Microsoft.XboxApp" },
+  { appx = "Microsoft.XboxGamingOverlay" },
+  { appx = "Microsoft.XboxGameOverlay" },
+  { appx = "Microsoft.XboxSpeechToTextOverlay" },
+  { appx = "Microsoft.XboxIdentityProvider" },
+  { appx = "Microsoft.Xbox.TCUI" },
+]
+
+[[app]]
+id = "rm-onedrive"
+name = "OneDrive"
+package = { uk = "OneDriveSetup.exe + автозапуск", en = "OneDriveSetup.exe + autostart" }
+risk = "moderate"
+group = "ms"
+warning = { uk = "На вже встановленій системі файли, які зберігаються лише в хмарі, стануть недоступні, доки OneDrive не встановити знову. Спершу збережи потрібні файли локально. Для нового образу — безпечно.", en = "On an installed system, files that live only in the cloud become unavailable until OneDrive is reinstalled. Make the files you need available offline first. For a fresh image it's safe." }
+actions = [
+  { run = 'Get-Process OneDrive -ErrorAction SilentlyContinue | Stop-Process -Force; $s = @("$env:SystemRoot\System32\OneDriveSetup.exe", "$env:SystemRoot\SysWOW64\OneDriveSetup.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1; if ($s) { Start-Process -FilePath $s -ArgumentList "/uninstall" -Wait } elseif (Get-Command winget -ErrorAction SilentlyContinue) { winget uninstall --id Microsoft.OneDrive -e --silent --accept-source-agreements --disable-interactivity } else { throw "Neither OneDriveSetup.exe nor winget was found" }', undo = "winget install --id Microsoft.OneDrive -e --silent --accept-source-agreements --accept-package-agreements", shell = "powershell", when = "live" },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Run', name = "OneDriveSetup", delete = true, when = "image" },
+]
+
+[[app]]
+id = "rm-copilot"
+name = "Copilot"
+package = "Microsoft.Copilot"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.Copilot" },
+  { appx = "Microsoft.Windows.Ai.Copilot.Provider" },
+]
+
+[[app]]
+id = "rm-clipchamp"
+name = "Clipchamp"
+package = "Clipchamp.Clipchamp"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Clipchamp.Clipchamp" },
+]
+
+[[app]]
+id = "rm-news"
+name = { uk = "Новини", en = "News" }
+package = "Microsoft.BingNews"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.BingNews" },
+]
+
+[[app]]
+id = "rm-weather"
+name = { uk = "Погода", en = "Weather" }
+package = "Microsoft.BingWeather"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.BingWeather" },
+]
+
+[[app]]
+id = "rm-teams"
+name = { uk = "Microsoft Teams (особистий)", en = "Microsoft Teams (personal)" }
+package = "MSTeams"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "MSTeams" },
+  { appx = "MicrosoftTeams" },
+]
+
+[[app]]
+id = "rm-outlook"
+name = { uk = "Outlook (новий)", en = "Outlook (new)" }
+package = "Microsoft.OutlookForWindows"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.OutlookForWindows" },
+]
+
+[[app]]
+id = "rm-officehub"
+name = "Microsoft 365 (Office)"
+package = "Microsoft.MicrosoftOfficeHub"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.MicrosoftOfficeHub" },
+]
+
+[[app]]
+id = "rm-solitaire"
+name = "Solitaire Collection"
+package = "Microsoft.MicrosoftSolitaireCollection"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.MicrosoftSolitaireCollection" },
+]
+
+[[app]]
+id = "rm-tips"
+name = { uk = "Поради та «Початок роботи»", en = "Tips and Get Started" }
+package = "Microsoft.Getstarted"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.Getstarted" },
+]
+
+[[app]]
+id = "rm-gethelp"
+name = { uk = "Технічна підтримка", en = "Get Help" }
+package = "Microsoft.GetHelp"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.GetHelp" },
+]
+
+[[app]]
+id = "rm-feedback"
+name = { uk = "Центр відгуків", en = "Feedback Hub" }
+package = "Microsoft.WindowsFeedbackHub"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.WindowsFeedbackHub" },
+]
+
+[[app]]
+id = "rm-maps"
+name = { uk = "Карти", en = "Maps" }
+package = "Microsoft.WindowsMaps"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.WindowsMaps" },
+]
+
+[[app]]
+id = "rm-powerautomate"
+name = "Power Automate"
+package = "Microsoft.PowerAutomateDesktop"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.PowerAutomateDesktop" },
+]
+
+[[app]]
+id = "rm-todo"
+name = "Microsoft To Do"
+package = "Microsoft.Todos"
+risk = "safe"
+group = "ms"
+actions = [
+  { appx = "Microsoft.Todos" },
+]
+
+[[app]]
+id = "rm-movies"
+name = { uk = "Кіно та ТБ", en = "Movies & TV" }
+package = "Microsoft.ZuneVideo"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.ZuneVideo" },
+]
+
+[[app]]
+id = "rm-phone"
+name = { uk = "Зв'язок із телефоном", en = "Phone Link" }
+package = "Microsoft.YourPhone, MicrosoftWindows.CrossDevice"
+risk = "moderate"
+group = "ms"
+warning = { uk = "Перестане працювати синхронізація сповіщень і фото з телефоном.", en = "Notification and photo sync with your phone will stop working." }
+actions = [
+  { appx = "Microsoft.YourPhone" },
+  { appx = "MicrosoftWindows.CrossDevice" },
+]
+
+[[app]]
+id = "rm-stickynotes"
+name = { uk = "Нотатки (Sticky Notes)", en = "Sticky Notes" }
+package = "Microsoft.MicrosoftStickyNotes"
+risk = "safe"
+group = "ms"
+actions = [
+  { appx = "Microsoft.MicrosoftStickyNotes" },
+]
+
+[[app]]
+id = "rm-cortana"
+name = "Cortana"
+package = "Microsoft.549981C3F5F10"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = "Microsoft.549981C3F5F10" },
+]
+
+[[app]]
+id = "rm-edge"
+name = "Microsoft Edge"
+package = "Microsoft.MicrosoftEdge.Stable"
+risk = "danger"
+group = "ms"
+warning = { uk = "Edge глибоко вбудований у Windows. Деякі посилання із системи перестануть відкриватися, а оновлення можуть повернути його. WebView2 (потрібен багатьом програмам) не видалятиметься.", en = "Edge is deeply built into Windows. Some system links will stop opening, and updates may bring it back. WebView2 (needed by many apps) is not removed." }
+actions = [
+  { reg = 'HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdateDev', name = "AllowUninstall", sz = "" },
+  { run = '$s = Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\*\Installer\setup.exe" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1; if ($s) { $f = "$env:SystemRoot\SystemApps\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\MicrosoftEdge.exe"; $made = -not (Test-Path $f); if ($made) { New-Item -Path $f -ItemType File -Force | Out-Null }; try { Start-Process -FilePath $s.FullName -ArgumentList "--uninstall --system-level --force-uninstall" -Wait -WindowStyle Hidden } finally { if ($made) { Remove-Item -Path $f -Force -ErrorAction SilentlyContinue } }; if (Test-Path "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe") { throw "Microsoft Edge is still installed" } }', undo = "winget install --id Microsoft.Edge -e --silent --accept-source-agreements --accept-package-agreements", shell = "powershell" },
+]
+
+[[app]]
+id = "rm-store"
+name = "Microsoft Store"
+package = "Microsoft.WindowsStore"
+risk = "danger"
+group = "ms"
+warning = { uk = "Повернути Store потім дуже складно. Програми зі Store перестануть оновлюватися, а winget може працювати гірше.", en = "Getting the Store back later is very hard. Store apps stop updating, and winget may work worse." }
+actions = [
+  { appx = "Microsoft.WindowsStore" },
+]
+
+[[app]]
+id = "rm-bing-apps"
+name = { uk = "Bing: Фінанси, Спорт, Подорожі…", en = "Bing: Finance, Sports, Travel…" }
+package = "Microsoft.BingFinance, BingSports, BingTravel, ..."
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.BingFinance' },
+  { appx = 'Microsoft.BingFoodAndDrink' },
+  { appx = 'Microsoft.BingHealthAndFitness' },
+  { appx = 'Microsoft.BingSports' },
+  { appx = 'Microsoft.BingTranslator' },
+  { appx = 'Microsoft.BingTravel' },
+]
+
+[[app]]
+id = "rm-bingsearch"
+name = { uk = "Пошук Bing", en = "Bing Search" }
+package = "Microsoft.BingSearch"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.BingSearch' },
+]
+
+[[app]]
+id = "rm-3d"
+name = { uk = "3D і змішана реальність", en = "3D and mixed reality" }
+package = "Microsoft.Microsoft3DViewer, Print3D, MSPaint (Paint 3D), ..."
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.3DBuilder' },
+  { appx = 'Microsoft.Microsoft3DViewer' },
+  { appx = 'Microsoft.Print3D' },
+  { appx = 'Microsoft.MSPaint' },
+  { appx = 'Microsoft.MixedReality.Portal' },
+]
+
+[[app]]
+id = "rm-oldapps"
+name = { uk = "Skype, Люди, Гаманець та інше", en = "Skype, People, Wallet and more" }
+package = "Microsoft.SkypeApp, People, Messaging, Wallet, ..."
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.SkypeApp' },
+  { appx = 'Microsoft.People' },
+  { appx = 'Microsoft.Messaging' },
+  { appx = 'Microsoft.OneConnect' },
+  { appx = 'Microsoft.Wallet' },
+  { appx = 'Microsoft.NetworkSpeedTest' },
+]
+
+[[app]]
+id = "rm-office-extras"
+name = { uk = "Sway, Power BI, старий OneNote", en = "Sway, Power BI, old OneNote" }
+package = "Microsoft.Office.OneNote, Office.Sway, MicrosoftPowerBIForWindows, Whiteboard"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.Office.OneNote' },
+  { appx = 'Microsoft.Office.Sway' },
+  { appx = 'Microsoft.MicrosoftPowerBIForWindows' },
+  { appx = 'Microsoft.Whiteboard' },
+]
+
+[[app]]
+id = "rm-m365companions"
+name = { uk = "Компаньйони Microsoft 365", en = "Microsoft 365 Companions" }
+package = "Microsoft.M365Companions"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.M365Companions' },
+]
+
+[[app]]
+id = "rm-journal"
+name = "Microsoft Journal"
+package = "Microsoft.MicrosoftJournal"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.MicrosoftJournal' },
+]
+
+[[app]]
+id = "rm-devhome"
+name = "Dev Home"
+package = "Microsoft.Windows.DevHome"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.Windows.DevHome' },
+  { appx = 'Microsoft.DevHome' },
+]
+
+[[app]]
+id = "rm-family"
+name = { uk = "Сімейна безпека Microsoft", en = "Microsoft Family Safety" }
+package = "MicrosoftCorporationII.MicrosoftFamily"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'MicrosoftCorporationII.MicrosoftFamily' },
+]
+
+[[app]]
+id = "rm-quickassist"
+name = { uk = "Швидка допомога (Quick Assist)", en = "Quick Assist" }
+package = "MicrosoftCorporationII.QuickAssist, App.Support.QuickAssist"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'MicrosoftCorporationII.QuickAssist' },
+  { capability = 'App.Support.QuickAssist' },
+]
+
+[[app]]
+id = "rm-pcmanager"
+name = "Microsoft PC Manager"
+package = "Microsoft.MicrosoftPCManager, Microsoft.PCManager"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.MicrosoftPCManager' },
+  { appx = 'Microsoft.PCManager' },
+]
+
+[[app]]
+id = "rm-aihub"
+name = { uk = "AI Hub (вітрина ШІ-застосунків)", en = "AI Hub" }
+package = "Microsoft.Windows.AIHub"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.Windows.AIHub' },
+]
+
+[[app]]
+id = "rm-gameassist"
+name = { uk = "Ігровий помічник Edge", en = "Edge Game Assist" }
+package = "Microsoft.Edge.GameAssist"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.Edge.GameAssist' },
+]
+
+[[app]]
+id = "rm-mail"
+name = { uk = "Пошта та Календар (старі)", en = "Mail and Calendar (old)" }
+package = "Microsoft.windowscommunicationsapps"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.windowscommunicationsapps' },
+]
+
+[[app]]
+id = "rm-soundrecorder"
+name = { uk = "Звукозапис", en = "Sound Recorder" }
+package = "Microsoft.WindowsSoundRecorder"
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { appx = 'Microsoft.WindowsSoundRecorder' },
+]
+
+[[app]]
+id = "rm-alarms"
+name = { uk = "Годинник і будильник", en = "Clock and alarms" }
+package = "Microsoft.WindowsAlarms"
+risk = "safe"
+group = "ms"
+actions = [
+  { appx = 'Microsoft.WindowsAlarms' },
+]
+
+[[app]]
+id = "rm-camera"
+name = { uk = "Камера", en = "Camera" }
+package = "Microsoft.WindowsCamera"
+risk = "safe"
+group = "ms"
+actions = [
+  { appx = 'Microsoft.WindowsCamera' },
+]
+
+[[app]]
+id = "rm-widgets"
+name = { uk = "Віджети (повністю)", en = "Widgets (completely)" }
+package = "MicrosoftWindows.Client.WebExperience, Microsoft.WidgetsPlatformRuntime"
+risk = "safe"
+group = "ms"
+actions = [
+  { appx = 'MicrosoftWindows.Client.WebExperience' },
+  { appx = 'Microsoft.WidgetsPlatformRuntime' },
+]
+
+[[app]]
+id = "rm-startexperiences"
+name = { uk = "Веб-доповнення меню «Пуск»", en = "Start menu web companions" }
+package = "Microsoft.StartExperiencesApp"
+risk = "safe"
+group = "ms"
+actions = [
+  { appx = 'Microsoft.StartExperiencesApp' },
+]
+
+[[app]]
+id = "rm-windows365"
+name = { uk = "Windows 365 і «Віддалений стіл»", en = "Windows 365 and Remote Desktop" }
+package = "MicrosoftCorporationII.Windows365, Microsoft.RemoteDesktop"
+risk = "safe"
+group = "ms"
+actions = [
+  { appx = 'MicrosoftCorporationII.Windows365' },
+  { appx = 'Microsoft.RemoteDesktop' },
+]
+
+[[app]]
+id = "rm-mediaplayer"
+name = { uk = "Медіапрогравач", en = "Media Player" }
+package = "Microsoft.ZuneMusic"
+risk = "moderate"
+group = "ms"
+warning = { uk = "Музика й відео відкриватимуться в іншій програмі — постав, наприклад, VLC.", en = "Music and video will open in another app — install VLC, for example." }
+actions = [
+  { appx = 'Microsoft.ZuneMusic' },
+]
+
+[[app]]
+id = "rm-photos"
+name = { uk = "Фотографії", en = "Photos" }
+package = "Microsoft.Windows.Photos"
+risk = "moderate"
+group = "ms"
+warning = { uk = "Знадобиться інший переглядач зображень.", en = "You will need another image viewer." }
+actions = [
+  { appx = 'Microsoft.Windows.Photos' },
+]
+
+[[app]]
+id = "rm-paint"
+name = "Paint"
+package = "Microsoft.Paint"
+risk = "moderate"
+group = "ms"
+warning = { uk = "Простого редактора картинок у системі не залишиться.", en = "No simple image editor will be left in the system." }
+actions = [
+  { appx = 'Microsoft.Paint' },
+]
+
+[[app]]
+id = "rm-notepad"
+name = { uk = "Блокнот", en = "Notepad" }
+package = "Microsoft.WindowsNotepad"
+risk = "moderate"
+group = "ms"
+warning = { uk = "Текстові файли відкриватимуться в іншій програмі. Старий notepad.exe лишиться.", en = "Text files will open in another app. The classic notepad.exe stays." }
+actions = [
+  { appx = 'Microsoft.WindowsNotepad' },
+]
+
+[[app]]
+id = "rm-snipping"
+name = { uk = "Ножиці (знімки екрана)", en = "Snipping Tool" }
+package = "Microsoft.ScreenSketch"
+risk = "moderate"
+group = "ms"
+warning = { uk = "Перестане працювати Win+Shift+S — знадобиться інша програма для скриншотів.", en = "Win+Shift+S stops working — you will need another screenshot tool." }
+actions = [
+  { appx = 'Microsoft.ScreenSketch' },
+]
+
+[[app]]
+id = "rm-calculator"
+name = { uk = "Калькулятор", en = "Calculator" }
+package = "Microsoft.WindowsCalculator"
+risk = "moderate"
+group = "ms"
+warning = { uk = "Калькулятора в системі не залишиться.", en = "There will be no calculator in the system." }
+actions = [
+  { appx = 'Microsoft.WindowsCalculator' },
+]
+
+[[app]]
+id = "rm-noreturn"
+name = { uk = "Не повертати Outlook і Dev Home", en = "Keep Outlook and Dev Home away" }
+package = { uk = "Завдання Windows Update, які їх доставляють", en = "Windows Update tasks that bring them back" }
+risk = "safe"
+group = "ms"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\OutlookUpdate', delete = true },
+  { reg = 'HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\DevHomeUpdate', delete = true },
+  { reg = 'HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler\OutlookUpdate', name = "workCompleted", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler\DevHomeUpdate', name = "workCompleted", dword = 1 },
+]
+
+[[app]]
+id = "rm-ads-games"
+name = { uk = "Ігри: Candy Crush, Asphalt…", en = "Games: Candy Crush, Asphalt…" }
+package = "king.com.*, Asphalt8Airborne, ..."
+risk = "safe"
+group = "partners"
+recommended = true
+actions = [
+  { appx = 'king.com.*' },
+  { appx = '*Asphalt8Airborne*' },
+  { appx = '*CaesarsSlotsFreeCasino*' },
+  { appx = '*COOKINGFEVER*' },
+  { appx = '*DisneyMagicKingdoms*' },
+  { appx = '*FarmVille2CountryEscape*' },
+  { appx = '*HiddenCity*' },
+  { appx = '*MarchofEmpires*' },
+  { appx = '*RoyalRevolt*' },
+  { appx = '*NYTCrossword*' },
+]
+
+[[app]]
+id = "rm-ads-media"
+name = { uk = "Netflix, Spotify, Disney+…", en = "Netflix, Spotify, Disney+…" }
+package = "Netflix, SpotifyMusic, Disney, PrimeVideo, ..."
+risk = "safe"
+group = "partners"
+recommended = true
+actions = [
+  { appx = '*Netflix*' },
+  { appx = '*SpotifyMusic*' },
+  { appx = 'Disney.37853FC22B2CE' },
+  { appx = '*PrimeVideo*' },
+  { appx = '*Amazon.com.Amazon*' },
+  { appx = '*HULUPLUS*' },
+  { appx = '*SlingTV*' },
+  { appx = '*iHeartRadio*' },
+  { appx = '*TuneInRadio*' },
+  { appx = '*PandoraMediaInc*' },
+]
+
+[[app]]
+id = "rm-ads-social"
+name = { uk = "TikTok, Instagram, Facebook…", en = "TikTok, Instagram, Facebook…" }
+package = "TikTok, Instagram, Facebook, LinkedIn, Flipboard"
+risk = "safe"
+group = "partners"
+recommended = true
+actions = [
+  { appx = '*TikTok*' },
+  { appx = '*Instagram*' },
+  { appx = 'FACEBOOK.FACEBOOK' },
+  { appx = '*LinkedInforWindows*' },
+  { appx = '*Flipboard*' },
+]
+
+[[app]]
+id = "rm-ads-trials"
+name = { uk = "Пробні: WinZip, Duolingo…", en = "Trials: WinZip, Duolingo…" }
+package = "AdobePhotoshopExpress, Duolingo, WinZipUniversal, ..."
+risk = "safe"
+group = "partners"
+recommended = true
+actions = [
+  { appx = '*AdobePhotoshopExpress*' },
+  { appx = '*Duolingo*' },
+  { appx = '*WinZipUniversal*' },
+  { appx = '*DrawboardPDF*' },
+  { appx = '*AutodeskSketchBook*' },
+  { appx = '*PicsArt-PhotoStudio*' },
+  { appx = '*PolarrPhotoEditor*' },
+  { appx = '*PhototasticCollage*' },
+  { appx = '*CyberLinkMediaSuiteEssentials*' },
+  { appx = '*ACGMediaPlayer*' },
+  { appx = '*ActiproSoftwareLLC*' },
+  { appx = '*OneCalendar*' },
+  { appx = '*Sidia.LiveWallpaper*' },
+]
+
+[[app]]
+id = "rm-oem-hp"
+name = "HP: myHP, OMEN…"
+package = "AD2F1837.*"
+risk = "moderate"
+group = "oem"
+warning = { uk = "Разом із рекламою зникнуть фірмові гарячі клавіші, керування вентиляторами й батареєю та оновлення BIOS від виробника.", en = "Along with the ads you lose the maker hotkeys, fan and battery controls, and BIOS updates." }
+actions = [
+  { appx = 'AD2F1837.*' },
+]
+
+[[app]]
+id = "rm-oem-dell"
+name = "Dell: SupportAssist…"
+package = "DellInc.DellSupportAssistforPCs, DellDigitalDelivery, ..."
+risk = "moderate"
+group = "oem"
+warning = { uk = "Разом із рекламою зникнуть фірмові гарячі клавіші, керування вентиляторами й батареєю та оновлення BIOS від виробника.", en = "Along with the ads you lose the maker hotkeys, fan and battery controls, and BIOS updates." }
+actions = [
+  { appx = 'DellInc.DellSupportAssistforPCs' },
+  { appx = 'DellInc.DellDigitalDelivery' },
+  { appx = 'DellInc.DellMobileConnect' },
+  { appx = 'DellInc.PartnerPromo' },
+]
+
+[[app]]
+id = "rm-oem-lenovo"
+name = "Lenovo Vantage"
+package = "*LenovoCompanion*"
+risk = "moderate"
+group = "oem"
+warning = { uk = "Разом із рекламою зникнуть фірмові гарячі клавіші, керування вентиляторами й батареєю та оновлення BIOS від виробника.", en = "Along with the ads you lose the maker hotkeys, fan and battery controls, and BIOS updates." }
+actions = [
+  { appx = '*LenovoCompanion*' },
+]
+
+[[app]]
+id = "rm-oem-asus"
+name = "ASUS: MyASUS, Armoury Crate"
+package = "B9ECED6F.*"
+risk = "moderate"
+group = "oem"
+warning = { uk = "Разом із рекламою зникнуть фірмові гарячі клавіші, керування вентиляторами й батареєю та оновлення BIOS від виробника.", en = "Along with the ads you lose the maker hotkeys, fan and battery controls, and BIOS updates." }
+actions = [
+  { appx = 'B9ECED6F.*' },
+]
+
+[[app]]
+id = "rm-oem-acer"
+name = "Acer Care Center"
+package = "AcerCareCenterS, AcerRegistration"
+risk = "moderate"
+group = "oem"
+warning = { uk = "Разом із рекламою зникнуть фірмові гарячі клавіші, керування вентиляторами й батареєю та оновлення BIOS від виробника.", en = "Along with the ads you lose the maker hotkeys, fan and battery controls, and BIOS updates." }
+actions = [
+  { appx = '*AcerCareCenterS*' },
+  { appx = '*AcerRegistration*' },
+]
+
+[[app]]
+id = "rm-oem-msi"
+name = "MSI Center"
+package = "*MICRO-STARINTERNATION*"
+risk = "moderate"
+group = "oem"
+warning = { uk = "Разом із рекламою зникнуть фірмові гарячі клавіші, керування вентиляторами й батареєю та оновлення BIOS від виробника.", en = "Along with the ads you lose the maker hotkeys, fan and battery controls, and BIOS updates." }
+actions = [
+  { appx = '*MICRO-STARINTERNATION*' },
+]
+
+[[app]]
+id = "rm-oem-samsung"
+name = "Samsung: Notes, Bixby…"
+package = "*SAMSUNGELECTRONICS*"
+risk = "moderate"
+group = "oem"
+warning = { uk = "Разом із рекламою зникнуть фірмові гарячі клавіші, керування вентиляторами й батареєю та оновлення BIOS від виробника.", en = "Along with the ads you lose the maker hotkeys, fan and battery controls, and BIOS updates." }
+actions = [
+  { appx = '*SAMSUNGELECTRONICS*' },
+]
+
+[[app]]
+id = "rm-cap-ie"
+name = { uk = "Режим Internet Explorer", en = "Internet Explorer mode" }
+package = "Browser.InternetExplorer"
+risk = "safe"
+group = "legacy"
+recommended = true
+actions = [
+  { capability = 'Browser.InternetExplorer' },
+]
+
+[[app]]
+id = "rm-cap-wordpad"
+name = "WordPad"
+package = "Microsoft.Windows.WordPad"
+risk = "safe"
+group = "legacy"
+recommended = true
+actions = [
+  { capability = 'Microsoft.Windows.WordPad' },
+]
+
+[[app]]
+id = "rm-cap-steps"
+name = { uk = "Засіб запису дій", en = "Steps Recorder" }
+package = "App.StepsRecorder"
+risk = "safe"
+group = "legacy"
+recommended = true
+actions = [
+  { capability = 'App.StepsRecorder' },
+]
+
+[[app]]
+id = "rm-cap-math"
+name = { uk = "Математичне введення", en = "Math Input Panel" }
+package = "MathRecognizer"
+risk = "safe"
+group = "legacy"
+recommended = true
+actions = [
+  { capability = 'MathRecognizer' },
+]
+
+[[app]]
+id = "rm-cap-xps"
+name = { uk = "Засіб перегляду XPS", en = "XPS Viewer" }
+package = "XPS.Viewer"
+risk = "safe"
+group = "legacy"
+recommended = true
+actions = [
+  { capability = 'XPS.Viewer' },
+]
+
+[[app]]
+id = "rm-ps2"
+name = { uk = "PowerShell 2.0 (ще й небезпечний)", en = "PowerShell 2.0 (also a security risk)" }
+package = "MicrosoftWindowsPowerShellV2Root"
+risk = "safe"
+group = "legacy"
+recommended = true
+actions = [
+  { feature = "MicrosoftWindowsPowerShellV2Root", enabled = false },
+  { feature = "MicrosoftWindowsPowerShellV2", enabled = false },
+]
+
+[[app]]
+id = "rm-cap-ise"
+name = "PowerShell ISE"
+package = "Microsoft.Windows.PowerShell.ISE"
+risk = "safe"
+group = "legacy"
+actions = [
+  { capability = 'Microsoft.Windows.PowerShell.ISE' },
+]
+
+[[app]]
+id = "rm-cap-wmp"
+name = { uk = "Windows Media Player (класичний)", en = "Windows Media Player (classic)" }
+package = "Media.WindowsMediaPlayer"
+risk = "moderate"
+group = "legacy"
+warning = { uk = "Деякі старі програми й ігри показують відео через нього.", en = "Some old apps and games play video through it." }
+actions = [
+  { capability = 'Media.WindowsMediaPlayer' },
+]
+
+[[app]]
+id = "rm-cap-hello"
+name = { uk = "Вхід за обличчям (Hello)", en = "Hello face sign-in" }
+package = "Hello.Face.*"
+risk = "moderate"
+group = "legacy"
+warning = { uk = "Вхід за обличчям перестане працювати. Видаляй, лише якщо в ПК немає ІЧ-камери.", en = "Face sign-in stops working. Remove only if the PC has no IR camera." }
+actions = [
+  { capability = 'Hello.Face.18967' },
+  { capability = 'Hello.Face.Migration.18967' },
+  { capability = 'Hello.Face.20134' },
+]

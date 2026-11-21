@@ -1,0 +1,581 @@
+# Твики приватности и телеметрии.
+#
+# Тексты на двух языках: name = { uk = "...", en = "..." }
+# risk        — safe (безопасно) | moderate (осторожно) | danger (опасно, спросит подтверждение)
+# recommended — включается кнопкой «Применить рекомендуемое»
+# warning     — текст предупреждения для опасных твиков
+# details     — технические строки только у пунктов без actions (для остальных интерфейс
+#               строит их из actions сам)
+#
+# actions — что реально делает твик. Каждая запись — inline-таблица в одну строку:
+#   { reg = 'HKLM\...', name = "X", dword = 1 }        значение реестра; типы: dword, qword, sz,
+#                                                       expand, multi = ["a", "b"], binary = "02 00";
+#                                                       name = "" — значение «(По умолчанию)»
+#   { reg = '...', name = "X", delete = true }          удалить значение (без name — весь раздел)
+#   { service = "Имя", start = "disabled" }             тип запуска: auto | delayed | manual | disabled
+#   { task = '\Microsoft\Windows\...', enabled = false } задача планировщика (полный путь, без масок)
+#   { appx = "Microsoft.X" }                            удалить Appx у всех пользователей и из образа
+#   { feature = "SMB1Protocol", enabled = false }       компонент Windows (DISM)
+#   { run = "команда", undo = "откат", shell = "powershell" }  по умолчанию cmd.exe; откат — только undo
+#   when = "live" | "image" — необязательно: только для работающей системы или только для образа
+#                             (в образе run попадает в скрипт первого запуска).
+# Корни реестра: HKLM, HKCU, HKCR, HKU. Пути и команды — литеральные строки '...', поэтому
+# обратные слэши не экранируются; если в команде нужны одинарные кавычки — '''...'''.
+
+[[group]]
+name = { uk = "Служби телеметрії та діагностики", en = "Telemetry and diagnostics services" }
+description = { uk = "Фонові служби, які збирають і надсилають дані до Microsoft.", en = "Background services that collect data and send it to Microsoft." }
+
+[[group.tweak]]
+id = "svc-diagtrack"
+name = "DiagTrack — Connected User Experiences and Telemetry"
+description = { uk = "Головна служба телеметрії Windows", en = "The main Windows telemetry service" }
+risk = "safe"
+recommended = true
+actions = [
+  { service = "DiagTrack", start = "disabled" },
+]
+
+[[group.tweak]]
+id = "svc-dmwappush"
+name = "dmwappushservice — WAP Push Message Routing"
+description = { uk = "Маршрутизація push-повідомлень для телеметрії", en = "Push message routing used by telemetry" }
+risk = "safe"
+recommended = true
+actions = [
+  { service = "dmwappushservice", start = "disabled" },
+]
+
+[[group.tweak]]
+id = "svc-diaghub"
+name = { uk = "diagnosticshub — Збір діагностичних даних", en = "diagnosticshub — Diagnostic data collection" }
+description = { uk = "Збирач даних центру діагностики", en = "Diagnostics Hub data collector" }
+risk = "safe"
+recommended = true
+actions = [
+  { service = "diagnosticshub.standardcollector.service", start = "disabled" },
+]
+
+[[group.tweak]]
+id = "svc-wer"
+name = "WerSvc — Windows Error Reporting"
+description = { uk = "Надсилання звітів про помилки до Microsoft", en = "Sends crash reports to Microsoft" }
+risk = "safe"
+recommended = true
+actions = [
+  { service = "WerSvc", start = "disabled" },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting', name = "Disabled", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting', name = "Disabled", dword = 1 },
+  { task = '\Microsoft\Windows\Windows Error Reporting\QueueReporting', enabled = false },
+]
+
+[[group.tweak]]
+id = "svc-pcasvc"
+name = { uk = "PcaSvc — Помічник із сумісності програм", en = "PcaSvc — Program Compatibility Assistant" }
+description = { uk = "Стежить за запуском старих програм", en = "Watches legacy programs as they run" }
+risk = "moderate"
+actions = [
+  { service = "PcaSvc", start = "disabled" },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat', name = "DisablePCA", dword = 1 },
+]
+
+[[group.tweak]]
+id = "svc-wsearch"
+name = { uk = "WSearch — Служба пошуку Windows", en = "WSearch — Windows Search service" }
+description = { uk = "Індексація файлів. Пошук у меню «Пуск» стане повільнішим", en = "File indexing. Start menu search will be slower" }
+risk = "moderate"
+actions = [
+  { service = "WSearch", start = "disabled" },
+]
+
+[[group.tweak]]
+id = "svc-maps"
+name = { uk = "MapsBroker — Завантаження офлайн-карт", en = "MapsBroker — Offline maps download" }
+description = { uk = "Фонове оновлення карт, якими майже ніхто не користується", en = "Background map updates almost nobody needs" }
+risk = "safe"
+recommended = true
+actions = [
+  { service = "MapsBroker", start = "disabled" },
+  { reg = 'HKLM\SYSTEM\Maps', name = "AutoUpdateEnabled", dword = 0 },
+  { task = '\Microsoft\Windows\Maps\MapsUpdateTask', enabled = false },
+  { task = '\Microsoft\Windows\Maps\MapsToastTask', enabled = false },
+]
+
+[[group]]
+name = { uk = "Групові політики та планувальник", en = "Group policies and Task Scheduler" }
+description = { uk = "Вимкнення збору даних на рівні політик і завдань за розкладом.", en = "Turn off data collection through policies and scheduled tasks." }
+
+[[group.tweak]]
+id = "gp-datacollection"
+name = { uk = "Вимкнути DataCollection у групових політиках", en = "Disable DataCollection in group policies" }
+description = { uk = "Мінімальний рівень телеметрії", en = "Minimum telemetry level" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name = "AllowTelemetry", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection', name = "AllowTelemetry", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name = "AllowDeviceNameInTelemetry", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name = "LimitDiagnosticLogCollection", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name = "LimitDumpCollection", dword = 1 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Privacy', name = "TailoredExperiencesWithDiagnosticDataEnabled", dword = 0 },
+]
+
+[[group.tweak]]
+id = "task-telemetry"
+name = { uk = "Вимкнути завдання діагностики в планувальнику", en = "Disable diagnostic tasks in Task Scheduler" }
+description = "Customer Experience Improvement Program, Application Experience, Autochk, DiskDiagnostic"
+risk = "safe"
+recommended = true
+actions = [
+  { task = '\Microsoft\Windows\Customer Experience Improvement Program\Consolidator', enabled = false },
+  { task = '\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip', enabled = false },
+  { task = '\Microsoft\Windows\Customer Experience Improvement Program\KernelCeipTask', enabled = false },
+  { task = '\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser', enabled = false },
+  { task = '\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser Exp', enabled = false },
+  { task = '\Microsoft\Windows\Application Experience\ProgramDataUpdater', enabled = false },
+  { task = '\Microsoft\Windows\Application Experience\MareBackup', enabled = false },
+  { task = '\Microsoft\Windows\Autochk\Proxy', enabled = false },
+  { task = '\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector', enabled = false },
+  { task = '\Microsoft\Windows\Device Information\Device', enabled = false },
+  { task = '\Microsoft\Windows\Device Information\Device User', enabled = false },
+]
+
+[[group.tweak]]
+id = "gp-ceip"
+name = { uk = "Вимкнути програму покращення якості (CEIP)", en = "Disable the Customer Experience Improvement Program (CEIP)" }
+description = { uk = "Не брати участі в Customer Experience Improvement Program", en = "Opt out of CEIP data collection" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\SQMClient\Windows', name = "CEIPEnable", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Microsoft\SQMClient\Windows', name = "CEIPEnable", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\AppV\CEIP', name = "CEIPEnable", dword = 0 },
+]
+
+[[group.tweak]]
+id = "env-devtelemetry"
+name = { uk = "Вимкнути телеметрію .NET CLI і PowerShell", en = "Disable .NET CLI and PowerShell telemetry" }
+description = { uk = "Для розробників: dotnet і pwsh не надсилатимуть статистику", en = "For developers: dotnet and pwsh stop sending usage data" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment', name = "DOTNET_CLI_TELEMETRY_OPTOUT", sz = "1" },
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment', name = "POWERSHELL_TELEMETRY_OPTOUT", sz = "1" },
+]
+
+[[group]]
+name = { uk = "Параметри конфіденційності", en = "Privacy settings" }
+description = { uk = "Те саме, що в «Параметри → Конфіденційність», тільки все одразу.", en = "The same as Settings → Privacy, but all at once." }
+
+[[group.tweak]]
+id = "priv-adid"
+name = { uk = "Не дозволяти програмам використовувати рекламний ідентифікатор", en = "Don't let apps use the advertising ID" }
+description = { uk = "Персоналізована реклама в програмах", en = "Personalized ads in apps" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo', name = "DisabledByGroupPolicy", dword = 1 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo', name = "Enabled", dword = 0 },
+]
+
+[[group.tweak]]
+id = "priv-launchtrack"
+name = { uk = "Не дозволяти Windows відстежувати запуски програм", en = "Don't let Windows track app launches" }
+description = { uk = "Використовується для «покращення» меню «Пуск» і пошуку", en = "Used to 'improve' Start and search results" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "Start_TrackProgs", dword = 0 },
+]
+
+[[group.tweak]]
+id = "priv-settings-content"
+name = { uk = "Не показувати рекомендований вміст у «Параметрах»", en = "Don't show suggested content in Settings" }
+description = { uk = "Пропозиції та реклама в застосунку «Параметри»", en = "Suggestions and ads in the Settings app" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "SubscribedContent-338393Enabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "SubscribedContent-353694Enabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "SubscribedContent-353696Enabled", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent', name = "DisableConsumerAccountStateContent", dword = 1 },
+]
+
+[[group.tweak]]
+id = "priv-langlist"
+name = { uk = "Не дозволяти сайтам отримувати мій список мов", en = "Don't let websites access my language list" }
+description = { uk = "Сайти не бачитимуть мови, встановлені в системі", en = "Websites won't see the languages installed on your PC" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Control Panel\International\User Profile', name = "HttpAcceptLanguageOptOut", dword = 1 },
+]
+
+[[group.tweak]]
+id = "priv-speech"
+name = { uk = "Вимкнути онлайн-розпізнавання мовлення", en = "Turn off online speech recognition" }
+description = { uk = "Голос не надсилається в хмару Microsoft", en = "Your voice isn't sent to Microsoft's cloud" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy', name = "HasAccepted", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\InputPersonalization', name = "AllowInputPersonalization", dword = 0 },
+]
+
+[[group.tweak]]
+id = "priv-inking"
+name = { uk = "Вимкнути збір даних введення з клавіатури та рукописного введення", en = "Turn off typing and handwriting data collection" }
+description = { uk = "Персональний словник і надсилання зразків введення", en = "Personal dictionary and input samples" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\InputPersonalization', name = "RestrictImplicitTextCollection", dword = 1 },
+  { reg = 'HKCU\Software\Microsoft\InputPersonalization', name = "RestrictImplicitInkCollection", dword = 1 },
+  { reg = 'HKCU\Software\Microsoft\InputPersonalization\TrainedDataStore', name = "HarvestContacts", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Input\TIPC', name = "Enabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Personalization\Settings', name = "AcceptedPrivacyPolicy", dword = 0 },
+]
+
+[[group.tweak]]
+id = "priv-activity"
+name = { uk = "Не збирати журнал дій на пристрої", en = "Don't collect activity history on this device" }
+description = { uk = "Часова шкала та журнал дій", en = "Timeline and activity history" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\System', name = "PublishUserActivities", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\System', name = "UploadUserActivities", dword = 0 },
+]
+
+[[group.tweak]]
+id = "priv-searchhistory"
+name = { uk = "Не вести історію пошуку в Windows", en = "Don't keep Windows search history" }
+description = { uk = "Пошук на цьому пристрої не запам'ятовується", en = "Searches on this device aren't remembered" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\SearchSettings', name = "IsDeviceSearchHistoryEnabled", dword = 0 },
+]
+
+[[group.tweak]]
+id = "priv-feedback"
+name = { uk = "Ніколи не запитувати відгуки", en = "Never ask for feedback" }
+description = { uk = "Прибирає спливаючі опитування Windows", en = "Removes Windows feedback pop-ups" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Siuf\Rules', name = "NumberOfSIUFInPeriod", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Siuf\Rules', name = "PeriodInNanoSeconds", delete = true },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name = "DoNotShowFeedbackNotifications", dword = 1 },
+  { task = '\Microsoft\Windows\Feedback\Siuf\DmClient', enabled = false },
+  { task = '\Microsoft\Windows\Feedback\Siuf\DmClientOnScenarioDownload', enabled = false },
+]
+
+[[group.tweak]]
+id = "priv-location"
+name = { uk = "Вимкнути визначення місцезнаходження", en = "Turn off location services" }
+description = { uk = "Погода й карти не визначатимуть, де ти", en = "Weather and maps won't know where you are" }
+risk = "moderate"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location', name = "Value", sz = "Deny" },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Sensor\Overrides\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}', name = "SensorPermissionState", dword = 0 },
+  { service = "lfsvc", start = "disabled" },
+]
+
+[[group.tweak]]
+id = "priv-recall"
+name = { uk = "Вимкнути Recall (знімки екрана ШІ)", en = "Disable Recall (AI screen snapshots)" }
+description = { uk = "Windows 11 не робитиме знімків усього, що ти робиш", en = "Windows 11 won't snapshot everything you do" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI', name = "DisableAIDataAnalysis", dword = 1 },
+  { reg = 'HKCU\Software\Policies\Microsoft\Windows\WindowsAI', name = "DisableAIDataAnalysis", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI', name = "AllowRecallEnablement", dword = 0 },
+  { feature = "Recall", enabled = false },
+]
+
+[[group.tweak]]
+id = "priv-cloudclip"
+name = { uk = "Вимкнути хмарний буфер обміну", en = "Disable cloud clipboard" }
+description = { uk = "Скопійоване не синхронізується між пристроями", en = "Copied items aren't synced between devices" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\System', name = "AllowCrossDeviceClipboard", dword = 0 },
+]
+
+[[group]]
+name = { uk = "Реклама, хмара та ШІ", en = "Ads, cloud and AI" }
+description = { uk = "Copilot, Bing у пошуку та реклама в меню «Пуск».", en = "Copilot, Bing in search and ads in the Start menu." }
+
+[[group.tweak]]
+id = "ad-copilot"
+name = { uk = "Вимкнути Copilot", en = "Disable Copilot" }
+description = { uk = "Прибирає кнопку та поєднання клавіш Win+C", en = "Removes the button and the Win+C shortcut" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot', name = "TurnOffWindowsCopilot", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot', name = "TurnOffWindowsCopilot", dword = 1 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "ShowCopilotButton", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ad-edgecopilot"
+name = { uk = "Вимкнути Copilot і бічну панель в Edge", en = "Disable Copilot and the sidebar in Edge" }
+description = { uk = "Прибирає кнопку Copilot у браузері Edge", en = "Removes the Copilot button from Edge" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "HubsSidebarEnabled", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "CopilotPageContext", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "CopilotCDPPageContext", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "EdgeEntraCopilotPageContext", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "Microsoft365CopilotChatIconEnabled", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ad-bing"
+name = { uk = "Вимкнути Bing у пошуку меню «Пуск»", en = "Disable Bing in Start menu search" }
+description = { uk = "Пошук лише на комп'ютері, без інтернету", en = "Search only your PC, not the web" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Policies\Microsoft\Windows\Explorer', name = "DisableSearchBoxSuggestions", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer', name = "DisableSearchBoxSuggestions", dword = 1 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Search', name = "BingSearchEnabled", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ad-start"
+name = { uk = "Прибрати рекламу та «поради» з меню «Пуск»", en = "Remove ads and 'tips' from the Start menu" }
+description = { uk = "Рекомендації, поради та пропозиції програм", en = "Recommendations, tips and app suggestions" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "SystemPaneSuggestionsEnabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "SubscribedContent-338388Enabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "SubscribedContent-338389Enabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "SoftLandingEnabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "Start_IrisRecommendations", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name = "Start_AccountNotifications", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer', name = "HideRecommendedPersonalizedSites", dword = 1 },
+]
+
+[[group.tweak]]
+id = "ad-autoinstall"
+name = { uk = "Заборонити автовстановлення рекламних програм", en = "Block automatic installs of promoted apps" }
+description = { uk = "Candy Crush і подібне більше не з'являтиметься саме", en = "Candy Crush and the like won't show up on their own" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent', name = "DisableWindowsConsumerFeatures", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent', name = "DisableCloudOptimizedContent", dword = 1 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "SilentInstalledAppsEnabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "PreInstalledAppsEnabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "PreInstalledAppsEverEnabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "OemPreInstalledAppsEnabled", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ad-lockscreen"
+name = { uk = "Прибрати рекламу та «цікаві факти» з екрана блокування", en = "Remove ads and 'fun facts' from the lock screen" }
+description = { uk = "Звичайне зображення без реклами", en = "A plain picture without ads" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "RotatingLockScreenOverlayEnabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "SubscribedContent-338387Enabled", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ad-widgets"
+name = { uk = "Вимкнути віджети та новини", en = "Disable widgets and news" }
+description = { uk = "Панель новин і погоди на панелі завдань", en = "The news and weather panel on the taskbar" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Dsh', name = "AllowNewsAndInterests", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds', name = "EnableFeeds", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ai-clicktodo"
+name = { uk = "Вимкнути Click to Do", en = "Disable Click to Do" }
+description = { uk = "ШІ-аналіз того, що на екрані (Win+клік)", en = "AI analysis of what is on screen (Win+click)" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Policies\Microsoft\Windows\WindowsAI', name = "DisableClickToDo", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI', name = "DisableClickToDo", dword = 1 },
+]
+
+[[group.tweak]]
+id = "ai-service"
+name = { uk = "Не запускати службу ШІ автоматично", en = "Do not auto-start the AI service" }
+description = { uk = "WSAIFabricSvc запускатиметься лише на вимогу", en = "WSAIFabricSvc starts only on demand" }
+risk = "safe"
+recommended = true
+actions = [
+  { service = "WSAIFabricSvc", start = "manual" },
+]
+
+[[group.tweak]]
+id = "ai-apps"
+name = { uk = "Вимкнути ШІ в Paint і Блокноті", en = "Disable AI in Paint and Notepad" }
+description = { uk = "Cocreator, генеративна заливка й переписування тексту", en = "Cocreator, generative fill and text rewriting" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint', name = "DisableCocreator", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint', name = "DisableGenerativeFill", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint', name = "DisableImageCreator", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint', name = "DisableGenerativeErase", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint', name = "DisableRemoveBackground", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Policies\WindowsNotepad', name = "DisableAIFeatures", dword = 1 },
+]
+
+[[group.tweak]]
+id = "ai-edge"
+name = { uk = "Вимкнути ШІ-функції в Edge", en = "Disable AI features in Edge" }
+description = { uk = "Написання текстів і локальна модель ШІ в браузері", en = "Text compose and the local AI model in the browser" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "ComposeInlineEnabled", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "GenAILocalFoundationalModelSettings", dword = 1 },
+]
+
+[[group.tweak]]
+id = "ad-edge"
+name = { uk = "Прибрати рекламу та «рекомендації» з Edge", en = "Remove ads and recommendations from Edge" }
+description = { uk = "Новини на новій вкладці, помічник покупок, пропозиції", en = "News on the new tab, the shopping assistant, suggestions" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "ShowRecommendationsEnabled", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "SpotlightExperiencesAndRecommendationsEnabled", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "EdgeShoppingAssistantEnabled", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "PersonalizationReportingEnabled", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "NewTabPageContentEnabled", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ad-settings"
+name = { uk = "Прибрати рекламу Microsoft 365 з «Параметрів»", en = "Remove Microsoft 365 ads from Settings" }
+description = { uk = "Банери акаунта й підписок на головній сторінці «Параметрів»", en = "Account and subscription banners on the Settings home page" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\SystemSettings\AccountNotifications', name = "EnableAccountNotifications", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ad-finishsetup"
+name = { uk = "Не пропонувати «завершити налаштування»", en = "Do not nag to finish setting up" }
+description = { uk = "Вітальні екрани після оновлень і нагадування про акаунт Microsoft", en = "Welcome screens after updates and Microsoft account reminders" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement', name = "ScoobeSystemSettingEnabled", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name = "SubscribedContent-310093Enabled", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ad-devicemeta"
+name = { uk = "Не завантажувати фірмові програми для пристроїв", en = "Do not download maker apps for devices" }
+description = { uk = "Windows не ставитиме сама Razer Synapse та подібне при підключенні миші чи клавіатури", en = "Windows won\u2019t install Razer Synapse and the like when you plug in a mouse or keyboard" }
+risk = "safe"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Device Metadata', name = "PreventDeviceMetadataFromNetwork", dword = 1 },
+]
+
+[[group]]
+name = { uk = "Телеметрія програм", en = "App telemetry" }
+description = { uk = "Програми теж збирають статистику — вимикаємо і її.", en = "Apps collect usage data too — turn that off as well." }
+
+[[group.tweak]]
+id = "app-office"
+name = { uk = "Вимкнути телеметрію Microsoft Office", en = "Disable Microsoft Office telemetry" }
+description = { uk = "Office 2016 і новіші не надсилатимуть звіти про використання", en = "Office 2016 and newer stop sending usage reports" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKCU\Software\Policies\Microsoft\Office\16.0\Common\ClientTelemetry', name = "DisableTelemetry", dword = 1 },
+  { reg = 'HKCU\Software\Policies\Microsoft\Office\16.0\Common\ClientTelemetry', name = "SendTelemetry", dword = 3 },
+  { reg = 'HKCU\Software\Microsoft\Office\Common\ClientTelemetry', name = "DisableTelemetry", dword = 1 },
+  { reg = 'HKCU\Software\Policies\Microsoft\Office\16.0\Common', name = "QMEnable", dword = 0 },
+  { reg = 'HKCU\Software\Policies\Microsoft\Office\16.0\Common', name = "SendCustomerData", dword = 0 },
+  { reg = 'HKCU\Software\Policies\Microsoft\Office\16.0\OSM', name = "EnableLogging", dword = 0 },
+  { reg = 'HKCU\Software\Policies\Microsoft\Office\16.0\OSM', name = "EnableUpload", dword = 0 },
+  { task = '\Microsoft\Office\OfficeTelemetryAgentLogOn2016', enabled = false },
+  { task = '\Microsoft\Office\OfficeTelemetryAgentFallBack2016', enabled = false },
+]
+
+[[group.tweak]]
+id = "app-chrome"
+name = { uk = "Вимкнути телеметрію Google Chrome", en = "Disable Google Chrome telemetry" }
+description = { uk = "Звіти про збої та статистика використання", en = "Crash reports and usage statistics" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Google\Chrome', name = "MetricsReportingEnabled", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Google\Chrome', name = "ChromeCleanupReportingEnabled", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\Policies\Google\Chrome', name = "UserFeedbackAllowed", dword = 0 },
+]
+
+[[group.tweak]]
+id = "app-firefox"
+name = { uk = "Вимкнути телеметрію Mozilla Firefox", en = "Disable Mozilla Firefox telemetry" }
+description = { uk = "Телеметрія та «дослідження» Firefox", en = "Firefox telemetry and studies" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Mozilla\Firefox', name = "DisableTelemetry", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Policies\Mozilla\Firefox', name = "DisableFirefoxStudies", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Policies\Mozilla\Firefox', name = "DisableDefaultBrowserAgent", dword = 1 },
+]
+
+[[group.tweak]]
+id = "app-nvidia"
+name = { uk = "Вимкнути телеметрію NVIDIA", en = "Disable NVIDIA telemetry" }
+description = { uk = "Служба та завдання збору даних драйвера відеокарти", en = "The graphics driver's data collection service and tasks" }
+risk = "safe"
+recommended = true
+actions = [
+  { service = "NvTelemetryContainer", start = "disabled" },
+  { task = '\NvTmMon_{B2FE1952-0186-46C3-BAEC-A80AA35AC5B8}', enabled = false },
+  { task = '\NvTmRep_{B2FE1952-0186-46C3-BAEC-A80AA35AC5B8}', enabled = false },
+  { task = '\NvTmRepOnLogon_{B2FE1952-0186-46C3-BAEC-A80AA35AC5B8}', enabled = false },
+  { task = '\NvTmRep_CrashReport1_{B2FE1952-0186-46C3-BAEC-A80AA35AC5B8}', enabled = false },
+  { task = '\NvTmRep_CrashReport2_{B2FE1952-0186-46C3-BAEC-A80AA35AC5B8}', enabled = false },
+  { task = '\NvTmRep_CrashReport3_{B2FE1952-0186-46C3-BAEC-A80AA35AC5B8}', enabled = false },
+  { task = '\NvTmRep_CrashReport4_{B2FE1952-0186-46C3-BAEC-A80AA35AC5B8}', enabled = false },
+  { reg = 'HKLM\SOFTWARE\NVIDIA Corporation\NvControlPanel2\Client', name = "OptInOrOutPreference", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\NVIDIA Corporation\Global\FTS', name = "EnableRID44231", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\NVIDIA Corporation\Global\FTS', name = "EnableRID64640", dword = 0 },
+  { reg = 'HKLM\SOFTWARE\NVIDIA Corporation\Global\FTS', name = "EnableRID66610", dword = 0 },
+]
+
+[[group.tweak]]
+id = "app-vs"
+name = { uk = "Вимкнути телеметрію Visual Studio", en = "Disable Visual Studio telemetry" }
+description = { uk = "Програма покращення якості Visual Studio", en = "The Visual Studio Customer Experience Improvement Program" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\VisualStudio\SQM', name = "OptIn", dword = 0 },
+  { reg = 'HKCU\Software\Microsoft\VisualStudio\Telemetry', name = "TurnOffSwitch", dword = 1 },
+]
+
+[[group.tweak]]
+id = "app-mediaplayer"
+name = { uk = "Вимкнути спільний доступ Windows Media Player", en = "Disable Windows Media Player sharing" }
+description = { uk = "Служба, що роздає медіатеку в мережу", en = "The service that shares your media library on the network" }
+risk = "safe"
+recommended = true
+actions = [
+  { service = "WMPNetworkSvc", start = "disabled" },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\WindowsMediaPlayer', name = "PreventLibrarySharing", dword = 1 },
+]

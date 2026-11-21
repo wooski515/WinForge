@@ -1,0 +1,542 @@
+# Каталог программ для установки.
+# Меню в программе строится из этого файла автоматически:
+# добавь новую запись [[category.app]] — и она появится в интерфейсе.
+#
+# Тексты на двух языках: description = { uk = "...", en = "..." }
+# Если текст одинаковый (название бренда) — можно просто строкой: name = "Discord"
+#
+# winget   — ID пакета в winget (проверить: winget search <имя>)
+# presets  — в каких пресетах программа отмечается автоматически: base, gamer, dev
+
+[[category]]
+name = { uk = "Спілкування", en = "Communication" }
+icon = "💬"
+
+[[category.app]]
+id = "discord"
+name = "Discord"
+winget = "Discord.Discord"
+description = { uk = "Голос і чати для ігор та друзів", en = "Voice and chat for games and friends" }
+presets = ["gamer", "base"]
+
+[[category.app]]
+id = "telegram"
+name = "Telegram"
+winget = "Telegram.TelegramDesktop"
+description = { uk = "Месенджер", en = "Messenger" }
+presets = ["base", "gamer", "dev"]
+
+[[category.app]]
+id = "zoom"
+name = "Zoom"
+winget = "Zoom.Zoom"
+description = { uk = "Відеоконференції", en = "Video meetings" }
+
+[[category.app]]
+id = "slack"
+name = "Slack"
+winget = "SlackTechnologies.Slack"
+description = { uk = "Робочий месенджер", en = "Work messenger" }
+
+[[category.app]]
+id = "viber"
+name = "Viber"
+winget = "Rakuten.Viber"
+description = { uk = "Месенджер і дзвінки", en = "Messenger and calls" }
+
+[[category.app]]
+id = "teamspeak"
+name = "TeamSpeak"
+winget = "TeamSpeakSystems.TeamSpeakClient"
+description = { uk = "Голосовий зв'язок", en = "Voice chat" }
+
+[[category.app]]
+id = "signal"
+name = "Signal"
+winget = "OpenWhisperSystems.Signal"
+description = { uk = "Захищений месенджер", en = "Private, encrypted messenger" }
+
+[[category.app]]
+id = "session"
+name = "Session"
+winget = "Session.Session"
+description = { uk = "Анонімний месенджер без номера телефону", en = "Anonymous messenger, no phone number needed" }
+
+[[category]]
+name = { uk = "Браузери", en = "Browsers" }
+icon = "🌐"
+
+[[category.app]]
+id = "firefox"
+name = "Firefox"
+winget = "Mozilla.Firefox"
+description = { uk = "Відкритий браузер від Mozilla", en = "Open-source browser by Mozilla" }
+presets = ["base", "dev"]
+
+[[category.app]]
+id = "chrome"
+name = "Google Chrome"
+winget = "Google.Chrome"
+description = { uk = "Браузер від Google", en = "Browser by Google" }
+
+[[category.app]]
+id = "brave"
+name = "Brave"
+winget = "Brave.Brave"
+description = { uk = "Браузер із вбудованим блокувальником реклами", en = "Browser with a built-in ad blocker" }
+
+[[category.app]]
+id = "operagx"
+name = "Opera GX"
+winget = "Opera.OperaGX"
+description = { uk = "Ігровий браузер", en = "Gaming browser" }
+presets = ["gamer"]
+
+[[category.app]]
+id = "vivaldi"
+name = "Vivaldi"
+winget = "Vivaldi.Vivaldi"
+description = { uk = "Гнучко налаштовуваний браузер", en = "Highly customizable browser" }
+
+[[category.app]]
+id = "firefoxesr"
+name = "Firefox ESR"
+winget = "Mozilla.Firefox.ESR"
+description = { uk = "Firefox з подовженою підтримкою", en = "Firefox Extended Support Release" }
+
+[[category.app]]
+id = "chromium"
+name = "Chromium"
+winget = "Hibbiki.Chromium"
+description = { uk = "Відкрита основа Chrome", en = "The open-source base of Chrome" }
+
+[[category.app]]
+id = "ungoogled"
+name = "Ungoogled Chromium"
+winget = "eloston.ungoogled-chromium"
+description = { uk = "Chromium без сервісів Google", en = "Chromium without Google services" }
+
+[[category.app]]
+id = "tor"
+name = "Tor Browser"
+winget = "TorProject.TorBrowser"
+description = { uk = "Анонімний браузер через мережу Tor", en = "Anonymous browsing over the Tor network" }
+
+[[category.app]]
+id = "opera"
+name = "Opera"
+winget = "Opera.Opera"
+description = { uk = "Браузер із вбудованим VPN", en = "Browser with a built-in VPN" }
+
+[[category]]
+name = { uk = "Ігри", en = "Games" }
+icon = "🎮"
+
+[[category.app]]
+id = "steam"
+name = "Steam"
+winget = "Valve.Steam"
+description = { uk = "Магазин і бібліотека ігор", en = "Game store and library" }
+presets = ["gamer"]
+
+[[category.app]]
+id = "epic"
+name = "Epic Games"
+winget = "EpicGames.EpicGamesLauncher"
+description = { uk = "Лаунчер Epic Games Store", en = "Epic Games Store launcher" }
+presets = ["gamer"]
+
+[[category.app]]
+id = "eaapp"
+name = "EA App"
+winget = "ElectronicArts.EADesktop"
+description = { uk = "Лаунчер ігор EA", en = "EA games launcher" }
+
+[[category.app]]
+id = "ubisoft"
+name = "Ubisoft Connect"
+winget = "Ubisoft.Connect"
+description = { uk = "Лаунчер ігор Ubisoft", en = "Ubisoft games launcher" }
+
+[[category.app]]
+id = "battlenet"
+name = "Battle.net"
+winget = "Blizzard.BattleNet"
+description = { uk = "Лаунчер ігор Blizzard", en = "Blizzard games launcher" }
+
+[[category.app]]
+id = "gog"
+name = "GOG Galaxy"
+winget = "GOG.Galaxy"
+description = { uk = "Ігри без DRM", en = "DRM-free games" }
+
+[[category]]
+name = { uk = "Редактори та інструменти розробки", en = "Editors and developer tools" }
+icon = "🛠"
+
+[[category.app]]
+id = "vscode"
+name = "VS Code"
+winget = "Microsoft.VisualStudioCode"
+description = { uk = "Легкий редактор коду", en = "Lightweight code editor" }
+presets = ["dev"]
+
+[[category.app]]
+id = "vs2022"
+name = "Visual Studio 2022"
+winget = "Microsoft.VisualStudio.2022.Community"
+description = { uk = "Повноцінна IDE, редакція Community", en = "Full IDE, Community edition" }
+
+[[category.app]]
+id = "jetbrains"
+name = "JetBrains Toolbox"
+winget = "JetBrains.Toolbox"
+description = { uk = "Встановлювач IDE від JetBrains", en = "Installer for JetBrains IDEs" }
+
+[[category.app]]
+id = "notepadpp"
+name = "Notepad++"
+winget = "Notepad++.Notepad++"
+description = { uk = "Швидкий текстовий редактор", en = "Fast text editor" }
+presets = ["dev"]
+
+[[category.app]]
+id = "git"
+name = "Git"
+winget = "Git.Git"
+description = { uk = "Система контролю версій", en = "Version control system" }
+presets = ["dev"]
+
+[[category.app]]
+id = "githubdesktop"
+name = "GitHub Desktop"
+winget = "GitHub.GitHubDesktop"
+description = { uk = "Git із графічним інтерфейсом", en = "Git with a graphical interface" }
+
+[[category.app]]
+id = "terminal"
+name = "Windows Terminal"
+winget = "Microsoft.WindowsTerminal"
+description = { uk = "Сучасний термінал", en = "Modern terminal" }
+presets = ["dev"]
+
+[[category.app]]
+id = "docker"
+name = "Docker Desktop"
+winget = "Docker.DockerDesktop"
+description = { uk = "Контейнери", en = "Containers" }
+
+[[category.app]]
+id = "postman"
+name = "Postman"
+winget = "Postman.Postman"
+description = { uk = "Тестування API", en = "API testing" }
+
+[[category.app]]
+id = "vscodium"
+name = "VSCodium"
+winget = "VSCodium.VSCodium"
+description = { uk = "VS Code без телеметрії Microsoft", en = "VS Code without Microsoft telemetry" }
+
+[[category.app]]
+id = "sublimetext"
+name = "Sublime Text"
+winget = "SublimeHQ.SublimeText.4"
+description = { uk = "Дуже швидкий редактор коду", en = "Very fast code editor" }
+
+[[category.app]]
+id = "sublimemerge"
+name = "Sublime Merge"
+winget = "SublimeHQ.SublimeMerge"
+description = { uk = "Git-клієнт від авторів Sublime Text", en = "Git client from the Sublime Text team" }
+
+[[category.app]]
+id = "winscp"
+name = "WinSCP"
+winget = "WinSCP.WinSCP"
+description = { uk = "SFTP/FTP-клієнт", en = "SFTP/FTP client" }
+
+[[category.app]]
+id = "putty"
+name = "PuTTY"
+winget = "PuTTY.PuTTY"
+description = { uk = "SSH-клієнт", en = "SSH client" }
+
+[[category.app]]
+id = "androidstudio"
+name = "Android Studio"
+winget = "Google.AndroidStudio"
+description = { uk = "IDE для Android-застосунків", en = "IDE for Android apps" }
+
+[[category]]
+name = { uk = "Мови програмування", en = "Programming languages" }
+icon = "🧩"
+
+[[category.app]]
+id = "rust"
+name = "Rust"
+winget = "Rustlang.Rustup"
+description = "rustup + cargo"
+presets = ["dev"]
+
+[[category.app]]
+id = "python"
+name = "Python 3.12"
+winget = "Python.Python.3.12"
+description = { uk = "Інтерпретатор Python", en = "Python interpreter" }
+presets = ["dev"]
+
+[[category.app]]
+id = "nodejs"
+name = "Node.js LTS"
+winget = "OpenJS.NodeJS.LTS"
+description = { uk = "JavaScript поза браузером + npm", en = "JavaScript outside the browser + npm" }
+presets = ["dev"]
+
+[[category.app]]
+id = "jdk"
+name = "Java JDK 21"
+winget = "EclipseAdoptium.Temurin.21.JDK"
+description = "Eclipse Temurin"
+
+[[category.app]]
+id = "go"
+name = "Go"
+winget = "GoLang.Go"
+description = { uk = "Мова Go від Google", en = "The Go language by Google" }
+
+[[category.app]]
+id = "dotnet"
+name = ".NET SDK 8"
+winget = "Microsoft.DotNet.SDK.8"
+description = "C#, F#, ASP.NET"
+
+[[category.app]]
+id = "buildtools"
+name = "C++ Build Tools"
+winget = "Microsoft.VisualStudio.2022.BuildTools"
+description = { uk = "Компілятор MSVC без IDE", en = "MSVC compiler without the IDE" }
+
+[[category]]
+name = { uk = "Медіа", en = "Media" }
+icon = "🎵"
+
+[[category.app]]
+id = "vlc"
+name = "VLC"
+winget = "VideoLAN.VLC"
+description = { uk = "Плеєр, що відкриває все", en = "Plays almost anything" }
+presets = ["base"]
+
+[[category.app]]
+id = "spotify"
+name = "Spotify"
+winget = "Spotify.Spotify"
+description = { uk = "Музика", en = "Music" }
+
+[[category.app]]
+id = "obs"
+name = "OBS Studio"
+winget = "OBSProject.OBSStudio"
+description = { uk = "Запис екрана та стріми", en = "Screen recording and streaming" }
+presets = ["gamer"]
+
+[[category.app]]
+id = "audacity"
+name = "Audacity"
+winget = "Audacity.Audacity"
+description = { uk = "Редактор звуку", en = "Audio editor" }
+
+[[category.app]]
+id = "gimp"
+name = "GIMP"
+winget = "GIMP.GIMP"
+description = { uk = "Редактор зображень", en = "Image editor" }
+
+[[category.app]]
+id = "klite"
+name = "K-Lite Codec Pack"
+winget = "CodecGuide.K-LiteCodecPack.Standard"
+description = { uk = "Набір кодеків", en = "Codec pack" }
+
+[[category.app]]
+id = "potplayer"
+name = "PotPlayer"
+winget = "Daum.PotPlayer"
+description = { uk = "Потужний відеоплеєр", en = "Powerful video player" }
+
+[[category.app]]
+id = "foobar"
+name = "foobar2000"
+winget = "PeterPawlowski.foobar2000"
+description = { uk = "Легкий аудіоплеєр", en = "Lightweight audio player" }
+
+[[category.app]]
+id = "qview"
+name = "qView"
+winget = "jurplel.qView"
+description = { uk = "Мінімалістичний переглядач зображень", en = "Minimal image viewer" }
+
+[[category.app]]
+id = "mp3tag"
+name = "Mp3tag"
+winget = "FlorianHeidenreich.Mp3tag"
+description = { uk = "Редактор тегів музики", en = "Music tag editor" }
+
+[[category.app]]
+id = "itunes"
+name = "Apple iTunes"
+winget = "Apple.iTunes"
+description = { uk = "Музика та iPhone", en = "Music and iPhone sync" }
+
+[[category.app]]
+id = "blender"
+name = "Blender"
+winget = "BlenderFoundation.Blender"
+description = { uk = "3D-моделювання та анімація", en = "3D modeling and animation" }
+
+[[category]]
+name = { uk = "Утиліти", en = "Utilities" }
+icon = "🧰"
+
+[[category.app]]
+id = "7zip"
+name = "7-Zip"
+winget = "7zip.7zip"
+description = { uk = "Архіватор", en = "Archiver" }
+presets = ["base", "gamer", "dev"]
+
+[[category.app]]
+id = "winrar"
+name = "WinRAR"
+winget = "RARLab.WinRAR"
+description = { uk = "Архіватор", en = "Archiver" }
+
+[[category.app]]
+id = "everything"
+name = "Everything"
+winget = "voidtools.Everything"
+description = { uk = "Миттєвий пошук файлів", en = "Instant file search" }
+presets = ["base", "dev"]
+
+[[category.app]]
+id = "powertoys"
+name = "PowerToys"
+winget = "Microsoft.PowerToys"
+description = { uk = "Корисні дрібниці для Windows", en = "Handy extras for Windows" }
+presets = ["dev"]
+
+[[category.app]]
+id = "sharex"
+name = "ShareX"
+winget = "ShareX.ShareX"
+description = { uk = "Скриншоти та запис екрана", en = "Screenshots and screen recording" }
+
+[[category.app]]
+id = "qbittorrent"
+name = "qBittorrent"
+winget = "qBittorrent.qBittorrent"
+description = { uk = "Торент-клієнт", en = "Torrent client" }
+
+[[category.app]]
+id = "hwinfo"
+name = "HWiNFO"
+winget = "REALiX.HWiNFO"
+description = { uk = "Датчики та інформація про ПК", en = "Sensors and PC information" }
+
+[[category.app]]
+id = "afterburner"
+name = "MSI Afterburner"
+winget = "Guru3D.Afterburner"
+description = { uk = "Моніторинг FPS і розгін відеокарти", en = "FPS monitoring and GPU overclocking" }
+presets = ["gamer"]
+
+[[category.app]]
+id = "peazip"
+name = "PeaZip"
+winget = "Giorgiotani.Peazip"
+description = { uk = "Відкритий архіватор", en = "Open-source archiver" }
+
+[[category.app]]
+id = "openshell"
+name = "Open-Shell"
+winget = "Open-Shell.Open-Shell-Menu"
+description = { uk = "Класичне меню «Пуск»", en = "Classic Start menu" }
+
+[[category.app]]
+id = "gyazo"
+name = "Gyazo"
+winget = "Nota.Gyazo"
+description = { uk = "Скриншоти з миттєвим посиланням", en = "Screenshots with an instant link" }
+
+[[category.app]]
+id = "lightshot"
+name = "Lightshot"
+winget = "Skillbrains.Lightshot"
+description = { uk = "Швидкі скриншоти області", en = "Quick area screenshots" }
+
+[[category]]
+name = { uk = "Офіс і документи", en = "Office and documents" }
+icon = "📄"
+
+[[category.app]]
+id = "libreoffice"
+name = "LibreOffice"
+winget = "TheDocumentFoundation.LibreOffice"
+description = { uk = "Безкоштовний офісний пакет", en = "Free office suite" }
+
+[[category.app]]
+id = "obsidian"
+name = "Obsidian"
+winget = "Obsidian.Obsidian"
+description = { uk = "Нотатки в Markdown", en = "Markdown notes" }
+
+[[category.app]]
+id = "notion"
+name = "Notion"
+winget = "Notion.Notion"
+description = { uk = "Нотатки та завдання", en = "Notes and tasks" }
+
+[[category.app]]
+id = "sumatra"
+name = "SumatraPDF"
+winget = "SumatraPDF.SumatraPDF"
+description = { uk = "Легкий переглядач PDF", en = "Lightweight PDF viewer" }
+presets = ["base"]
+
+[[category.app]]
+id = "foxit"
+name = "Foxit PDF Reader"
+winget = "Foxit.FoxitReader"
+description = { uk = "Переглядач PDF з коментарями", en = "PDF viewer with annotations" }
+
+[[category.app]]
+id = "adobereader"
+name = "Adobe Acrobat Reader"
+winget = "Adobe.Acrobat.Reader.64-bit"
+description = { uk = "Офіційний переглядач PDF", en = "The official PDF viewer" }
+
+[[category]]
+name = { uk = "Системні компоненти", en = "System components" }
+icon = "⚙"
+
+[[category.app]]
+id = "vcredist"
+name = "Visual C++ 2015+"
+winget = "Microsoft.VCRedist.2015+.x64"
+description = { uk = "Потрібен майже всім іграм і програмам", en = "Needed by almost every game and app" }
+presets = ["base", "gamer", "dev"]
+
+[[category.app]]
+id = "directx"
+name = "DirectX (June 2010)"
+winget = "Microsoft.DirectX"
+description = { uk = "Старі бібліотеки DirectX для ігор", en = "Legacy DirectX libraries for games" }
+presets = ["gamer"]
+
+[[category.app]]
+id = "dotnetruntime"
+name = ".NET Desktop Runtime 8"
+winget = "Microsoft.DotNet.DesktopRuntime.8"
+description = { uk = "Потрібен багатьом програмам", en = "Needed by many apps" }
+presets = ["base", "gamer"]
