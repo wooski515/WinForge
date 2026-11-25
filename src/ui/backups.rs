@@ -24,10 +24,14 @@ impl WinForgeApp {
         // Завершение идущего отката.
         if let Some(rx) = &self.tools.rollback_rx {
             match rx.try_recv() {
-                Ok(msg) => {
+                Ok((ok, errors)) => {
                     self.tools.rollback_rx = None;
                     self.tools.journals = None;
-                    self.notify(ui.ctx(), msg);
+                    if ok > 0 {
+                        self.prune_applied_after_undo();
+                    }
+                    self.notify(ui.ctx(), rollback_summary(ok, errors.len(), l));
+                    self.tools.rollback_result = Some((ok, errors));
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => ui.ctx().request_repaint(),
                 Err(_) => self.tools.rollback_rx = None,
@@ -62,10 +66,52 @@ impl WinForgeApp {
             }
             if busy {
                 ui.spinner();
-                ui.label(RichText::new(l.tr("Відкат…", "Undoing…")).color(MUTED));
+                let step = self.tools.rollback_step.lock().map(|s| s.clone()).unwrap_or_default();
+                let text = if step.is_empty() {
+                    l.tr("Відкат…", "Undoing…").to_owned()
+                } else {
+                    format!("{} {step}", l.tr("Відкат:", "Undoing:"))
+                };
+                ui.add(egui::Label::new(RichText::new(text).color(MUTED)).truncate());
             }
         });
         ui.add_space(12.0);
+
+        // Итог последнего отката: ошибки не должны пропадать вместе с подсказкой.
+        let mut close_result = false;
+        if let Some((ok, errors)) = &self.tools.rollback_result {
+            let summary = rollback_summary(*ok, errors.len(), l);
+            widgets::card(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let color = if errors.is_empty() { SAFE } else { MODERATE };
+                    ui.label(RichText::new(summary).strong().color(color));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui.small_button("✖").clicked() {
+                            close_result = true;
+                        }
+                    });
+                });
+                if !errors.is_empty() {
+                    ui.label(
+                        RichText::new(l.tr(
+                            "Не вдалося повернути (журнал лишається — можна спробувати ще раз):",
+                            "Could not be undone (the journal stays, so you can try again):",
+                        ))
+                        .size(12.5)
+                        .color(MUTED),
+                    );
+                    egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
+                        for e in errors {
+                            ui.add(egui::Label::new(RichText::new(format!("✖  {e}")).size(12.0).color(DANGER)).wrap());
+                        }
+                    });
+                }
+            });
+            ui.add_space(12.0);
+        }
+        if close_result {
+            self.tools.rollback_result = None;
+        }
 
         let journals = self.tools.journals.clone().unwrap_or_default();
         if journals.is_empty() {
@@ -85,7 +131,7 @@ impl WinForgeApp {
             widgets::card(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        ui.label(RichText::new(&journal.label).strong().color(TEXT));
+                        ui.label(RichText::new(sys::journal_label(&journal.label, l)).strong().color(TEXT));
                         let info = match l {
                             Lang::Uk => format!("{} UTC · змін: {}", journal.display_time(), journal.undos.len()),
                             Lang::En => format!("{} UTC · changes: {}", journal.display_time(), journal.undos.len()),
@@ -126,24 +172,34 @@ impl WinForgeApp {
         if let Some(i) = rollback {
             let (path, journal) = journals[i].clone();
             let (tx, rx) = std::sync::mpsc::channel();
+            let step = self.tools.rollback_step.clone();
+            if let Ok(mut s) = step.lock() {
+                s.clear();
+            }
             std::thread::spawn(move || {
-                let (ok, errors) = sys::rollback(&journal);
-                let msg = if errors.is_empty() {
+                let (ok, errors) = sys::rollback(&journal, l, |i, total, what| {
+                    if let Ok(mut s) = step.lock() {
+                        *s = format!("{i}/{total} · {what}");
+                    }
+                });
+                if errors.is_empty() {
                     sys::mark_rolled_back(&path);
                     sys::probe::broadcast_settings();
-                    match l {
-                        Lang::Uk => format!("Відкочено змін: {ok}"),
-                        Lang::En => format!("Changes undone: {ok}"),
-                    }
-                } else {
-                    match l {
-                        Lang::Uk => format!("Відкочено: {ok}, помилок: {} ({})", errors.len(), errors[0]),
-                        Lang::En => format!("Undone: {ok}, errors: {} ({})", errors.len(), errors[0]),
-                    }
-                };
-                let _ = tx.send(msg);
+                }
+                let _ = tx.send((ok, errors));
             });
             self.tools.rollback_rx = Some(rx);
+            self.tools.rollback_result = None;
         }
+    }
+}
+
+/// Итог отката на языке интерфейса.
+fn rollback_summary(ok: usize, errors: usize, l: Lang) -> String {
+    match (l, errors) {
+        (Lang::Uk, 0) => format!("Відкочено змін: {ok}"),
+        (Lang::En, 0) => format!("Changes undone: {ok}"),
+        (Lang::Uk, n) => format!("Відкочено: {ok}, помилок: {n}"),
+        (Lang::En, n) => format!("Undone: {ok}, errors: {n}"),
     }
 }

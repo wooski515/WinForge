@@ -151,7 +151,7 @@ pub fn write_hosts(text: &str) -> std::io::Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Съёмный USB-диск, на который можно записать установку Windows.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct UsbDisk {
     /// Номер диска Windows (Get-Disk -Number).
     pub number: u32,
@@ -164,8 +164,9 @@ pub struct UsbDisk {
 }
 
 impl UsbDisk {
+    /// Гигабайты как в Проводнике (1 ГБ = 1024³ байт): «115,5 ГБ», а не «124,0 ГБ».
     pub fn size_gb(&self) -> f64 {
-        self.size as f64 / 1_000_000_000.0
+        self.size as f64 / 1_073_741_824.0
     }
 }
 
@@ -806,7 +807,7 @@ fn disk_row(raw: &str) -> (Txt, String, String) {
     let size = parts
         .get(3)
         .and_then(|s| s.parse::<u64>().ok())
-        .map(|b| b as f64 / 1_000_000_000.0)
+        .map(|b| b as f64 / 1_073_741_824.0)
         .unwrap_or(0.0);
     let kind: Vec<&str> = [bus, media].into_iter().filter(|s| !s.is_empty()).collect();
     let suffix = if kind.is_empty() { String::new() } else { format!(", {}", kind.join(" ")) };
@@ -922,5 +923,76 @@ impl DiskSampler {
 impl Default for DiskSampler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Особенности этого ПК для советов («ноутбук», «система на HDD»)
+// ---------------------------------------------------------------------------
+
+use crate::catalog::HwTrait;
+
+/// Батарея и тип диска, на котором стоит Windows (не любого диска).
+const TRAITS_SCRIPT: &str = r#"[Console]::OutputEncoding = [Text.Encoding]::UTF8
+"BATTERY=$(@(Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue).Count)"
+try {
+  $n = (Get-Partition -DriveLetter $env:SystemDrive.Substring(0, 1) -ErrorAction Stop).DiskNumber
+  "MEDIA=$((Get-PhysicalDisk -ErrorAction Stop | Where-Object DeviceId -eq "$n" | Select-Object -First 1).MediaType)"
+} catch {}"#;
+
+/// Разбор вывода TRAITS_SCRIPT. Тип диска «Unspecified» (часто в виртуалках) — без совета.
+pub fn parse_traits(out: &str) -> Vec<HwTrait> {
+    let mut traits = Vec::new();
+    for line in out.lines().map(str::trim) {
+        if let Some(n) = line.strip_prefix("BATTERY=") {
+            if n.trim().parse::<u32>().unwrap_or(0) > 0 {
+                traits.push(HwTrait::Laptop);
+            }
+        } else if let Some(m) = line.strip_prefix("MEDIA=") {
+            match m.trim().to_ascii_uppercase().as_str() {
+                "HDD" | "3" => traits.push(HwTrait::Hdd),
+                "SSD" | "4" => traits.push(HwTrait::Ssd),
+                _ => {}
+            }
+        }
+    }
+    traits
+}
+
+static TRAITS: std::sync::OnceLock<Vec<HwTrait>> = std::sync::OnceLock::new();
+
+/// Запускает определение в фоне (1–3 с через PowerShell); повторный вызов ничего не делает.
+pub fn detect_traits_in_background() {
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    STARTED.call_once(|| {
+        std::thread::spawn(|| {
+            let out = os::run("powershell", TRAITS_SCRIPT).unwrap_or_default();
+            let _ = TRAITS.set(parse_traits(&out));
+        });
+    });
+}
+
+/// Особенности этого ПК, если уже определены.
+pub fn traits() -> Option<&'static [HwTrait]> {
+    TRAITS.get().map(Vec::as_slice)
+}
+
+#[cfg(test)]
+mod traits_tests {
+    use super::*;
+
+    #[test]
+    fn usb_size_matches_explorer() {
+        let d = UsbDisk { size: 123_983_626_752, ..Default::default() };
+        assert_eq!(format!("{:.1}", d.size_gb()), "115.5", "как в Проводнике, не 124.0");
+    }
+
+    #[test]
+    fn laptop_and_disk_type_are_read() {
+        assert_eq!(parse_traits("BATTERY=1\r\nMEDIA=SSD\r\n"), vec![HwTrait::Laptop, HwTrait::Ssd]);
+        assert_eq!(parse_traits("BATTERY=0\nMEDIA=HDD"), vec![HwTrait::Hdd]);
+        // Виртуалка: батареи нет, тип диска не указан — советов нет.
+        assert!(parse_traits("BATTERY=0\nMEDIA=Unspecified").is_empty());
+        assert!(parse_traits("").is_empty());
     }
 }

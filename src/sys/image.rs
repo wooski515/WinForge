@@ -443,6 +443,8 @@ pub struct SpecializeOptions {
     pub product_key: bool,
     /// KMS-сервер организации: (адрес, порт). Адрес уже проверен.
     pub kms: Option<(String, Option<u16>)>,
+    /// Поставить драйверы ПК, на котором собирали образ, из `WinForge\Drivers` носителя.
+    pub this_pc_drivers: bool,
 }
 
 /// Где в новой системе лежит профиль Wi-Fi (удаляется сразу после добавления).
@@ -510,6 +512,21 @@ pub fn specialize_script_with(
          Log 'WinForge: specialize started'\r\n\
          \r\n",
     );
+    if opts.this_pc_drivers {
+        // Первым делом: Wi-Fi ниже нужен адаптер с драйвером. Читаем прямо с носителя,
+        // без копирования гигабайтов на C:. Ненулевой код pnputil — не провал
+        // (нужна перезагрузка, драйвер не подошёл ни к одному устройству).
+        s.push_str(
+            "Log 'Installing drivers of the PC the image was built on...'\r\n\
+             $drv = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -ne \"$env:SystemDrive\\\" } | ForEach-Object { Join-Path $_.Root 'WinForge\\Drivers' } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1\r\n\
+             if ($drv) {\r\n\
+             \x20   $t = Get-Date\r\n\
+             \x20   $out = pnputil.exe /add-driver (Join-Path $drv '*.inf') /subdirs /install 2>&1\r\n\
+             \x20   Log \"   pnputil from ${drv}: code $LASTEXITCODE, $([int]((Get-Date) - $t).TotalSeconds) s; $((@($out) | Where-Object { \"$_\".Trim() } | Select-Object -Last 3) -join ' | ')\"\r\n\
+             } else { Log '   WinForge\\Drivers not found on any drive: was the USB drive or disc removed?' }\r\n\
+             \r\n",
+        );
+    }
     if copy_installers {
         // Носитель установки (флешка/диск) в specialize ещё подключён: забираем
         // свои установщики, пока он есть. Системный диск пропускаем.
@@ -729,25 +746,49 @@ pub fn setup_apps_script(apps: &[WingetInstall], custom: &[CustomInstall], delet
          $log = \"$env:SystemDrive\\WinForge\\setup.log\"\r\n\
          function Log($m) { Add-Content -Path $log -Value \"$(Get-Date -Format o)  $m\" }\r\n\
          Log 'WinForge: app setup started'\r\n\
+         # If the first sign-in is interrupted (PC turned off, power cut), the next\r\n\
+         # sign-in carries on: a logon task reruns this script until it reaches the end,\r\n\
+         # and every finished item is noted in setup-done.txt so it is not repeated.\r\n\
+         $done = \"$env:SystemDrive\\WinForge\\setup-done.txt\"\r\n\
+         $taskName = 'WinForge Setup Apps'\r\n\
+         if (-not (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) {\r\n\
+         \x20   $out = schtasks.exe /Create /TN $taskName /SC ONLOGON /RU \"$env:USERDOMAIN\\$env:USERNAME\" /IT /RL HIGHEST /F /TR \"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Minimized -File `\"$PSCommandPath`\"\" 2>&1\r\n\
+         \x20   if ($LASTEXITCODE -ne 0) { Log \"   resume task not created: $out\" }\r\n\
+         }\r\n\
+         function Test-Done([string]$key) { (Test-Path -LiteralPath $done) -and ((Get-Content -LiteralPath $done) -contains $key) }\r\n\
+         function Set-Done([string]$key) { Add-Content -LiteralPath $done -Value $key }\r\n\
          # winget появляется не сразу после первого входа — ждём до 5 минут.\r\n\
          for ($i = 0; $i -lt 60 -and -not (Get-Command winget -ErrorAction SilentlyContinue); $i++) { Start-Sleep 5 }\r\n\r\n",
     );
     // Не все установщики умеют ставиться в выбранную папку (VC++, Telegram):
     // тогда повтор в папку по умолчанию. Итог каждой программы — в журнал.
     s.push_str(
-        "function Install-App([string]$id, [string]$dir) {\r\n\
+        "# Success for winget: installed, already installed / nothing to upgrade, needs a restart.\r\n\
+         $wingetOk = @(0, -1978335189, -1978335135, -1978334967)\r\n\
+         function Install-App([string]$id, [string]$dir) {\r\n\
+         \x20   if (Test-Done \"winget:$id\") { return }\r\n\
          \x20   Log \"winget: $id\"\r\n\
          \x20   $code = 1\r\n\
          \x20   if ($dir) {\r\n\
-         \x20       $out = winget install --id $id -e --silent --accept-package-agreements --accept-source-agreements --location $dir 2>&1\r\n\
+         \x20       $out = winget install --id $id -e --silent --no-upgrade --accept-package-agreements --accept-source-agreements --location $dir 2>&1\r\n\
          \x20       $code = $LASTEXITCODE\r\n\
-         \x20       if ($code -ne 0) { Log \"   not installed into $dir (code $code), retrying in the default folder\" }\r\n\
+         \x20       if ($code -notin $wingetOk) { Log \"   not installed into $dir (code $code), retrying in the default folder\" }\r\n\
          \x20   }\r\n\
-         \x20   if (-not $dir -or $code -ne 0) {\r\n\
-         \x20       $out = winget install --id $id -e --silent --accept-package-agreements --accept-source-agreements 2>&1\r\n\
+         \x20   if (-not $dir -or $code -notin $wingetOk) {\r\n\
+         \x20       $out = winget install --id $id -e --silent --no-upgrade --accept-package-agreements --accept-source-agreements 2>&1\r\n\
          \x20       $code = $LASTEXITCODE\r\n\
          \x20   }\r\n\
-         \x20   if ($code -eq 0) { Log '   ok' } else { Log \"   FAILED (code $code): $((@($out) | Where-Object { \"$_\".Trim() } | Select-Object -Last 2) -join ' | ')\" }\r\n\
+         \x20   # 0x8A15003F: the package index is damaged (e.g. the PC was turned off while it was\r\n\
+         \x20   # downloading). Fetch it again and retry once.\r\n\
+         \x20   if ($code -eq -1978335169) {\r\n\
+         \x20       Log '   package index damaged, refreshing it and retrying'\r\n\
+         \x20       winget source reset --force 2>&1 | Out-Null\r\n\
+         \x20       winget source update 2>&1 | Out-Null\r\n\
+         \x20       $out = winget install --id $id -e --silent --no-upgrade --accept-package-agreements --accept-source-agreements 2>&1\r\n\
+         \x20       $code = $LASTEXITCODE\r\n\
+         \x20   }\r\n\
+         \x20   if ($code -eq 0) { Log '   ok' } elseif ($code -in $wingetOk) { Log '   ok (already installed)' } else { Log \"   FAILED (code $code): $((@($out) | Where-Object { \"$_\".Trim() } | Select-Object -Last 2) -join ' | ')\" }\r\n\
+         \x20   Set-Done \"winget:$id\"\r\n\
          }\r\n\r\n",
     );
     for a in apps {
@@ -777,6 +818,7 @@ pub fn setup_apps_script(apps: &[WingetInstall], custom: &[CustomInstall], delet
              \x20   Log '   WinForge\\Installers not found: was the USB drive or disc removed?'\r\n\
              }\r\n\
              function Install-Custom([string]$name, [string]$file, [string]$params, [string]$download) {\r\n\
+             \x20   if (Test-Done \"installer:$name\") { return }\r\n\
              \x20   Log \"installer: $name\"\r\n\
              \x20   try {\r\n\
              \x20       if ($download) { $file = Join-Path $env:TEMP $file; Invoke-WebRequest -Uri $download -OutFile $file -UseBasicParsing }\r\n\
@@ -791,6 +833,7 @@ pub fn setup_apps_script(apps: &[WingetInstall], custom: &[CustomInstall], delet
              \x20       # 3010 и 1641 — установлено, нужна перезагрузка.\r\n\
              \x20       if ($p.ExitCode -in 0, 3010, 1641) { Log '   ok' } else { Log \"   FAILED (code $($p.ExitCode))\" }\r\n\
              \x20   } catch { Log \"   FAILED: $($_.Exception.Message)\" }\r\n\
+             \x20   Set-Done \"installer:$name\"\r\n\
              }\r\n\r\n",
         );
     }
@@ -819,7 +862,11 @@ pub fn setup_apps_script(apps: &[WingetInstall], custom: &[CustomInstall], delet
             "if (Test-Path -LiteralPath $installers) { Remove-Item -LiteralPath $installers -Recurse -Force -ErrorAction SilentlyContinue; Log 'installers removed' }\r\n",
         );
     }
-    s.push_str("Log 'WinForge: app setup finished'\r\n");
+    // Дошли до конца — продолжать при следующем входе больше не нужно.
+    s.push_str(
+        "schtasks.exe /Delete /TN $taskName /F 2>&1 | Out-Null\r\n\
+         Log 'WinForge: app setup finished'\r\n",
+    );
     s
 }
 
@@ -836,6 +883,9 @@ pub struct BuildInput<'a> {
     /// Папка драйверов: копируется в `$WinPEDriver$` носителя, установщик
     /// сам ставит их и в среду установки, и в новую систему.
     pub drivers: &'a str,
+    /// Выгрузить сторонние драйверы этого ПК и тоже положить в `$WinPEDriver$`
+    /// (для переустановки на этом же компьютере).
+    pub export_drivers: bool,
     /// Базовая папка; скрипт работает только в её подпапке `WinForge-work`.
     pub work_dir: &'a str,
     /// Удалить рабочую папку после успешной сборки ISO.
@@ -870,8 +920,12 @@ public static class WfProgress {
     public static void CheckCancel() {
         if (!string.IsNullOrEmpty(CancelFile) && File.Exists(CancelFile)) { throw new OperationCanceledException("Cancelled in WinForge."); }
     }
+    // Часть шага, которую занимает операция (например, копирование — 0–40 % шага 4).
+    public static int From = 0;
+    public static int To = 100;
     public static void Pct(int pct) {
         CheckCancel();
+        pct = From + pct * (To - From) / 100;
         if (string.IsNullOrEmpty(ProgressFile)) { return; }
         try { File.AppendAllText(ProgressFile, "PCT " + pct + "\r\n"); } catch { }
     }
@@ -1018,6 +1072,13 @@ try { Start-Transcript -Path $logFile -Force | Out-Null; Report "LOG $logFile" }
 trap {
     $e = $_.Exception
     while ($e.InnerException) { $e = $e.InnerException }
+    # Отменили в WinForge — недокопированный носитель (несколько ГБ) не оставляем.
+    # Удаляется только своя папка WinForge-work.
+    if ($e.Message -eq 'Cancelled in WinForge.' -and $cleanup -and $work -and (Split-Path $work -Leaf) -eq 'WinForge-work') {
+        try { if ($source) { Dismount-DiskImage -ImagePath $source -ErrorAction SilentlyContinue | Out-Null } } catch {}
+        [gc]::Collect(); [gc]::WaitForPendingFinalizers()
+        Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
     Report "ERROR $($e.Message)"
     try { Stop-Transcript | Out-Null } catch {}
     break
@@ -1055,6 +1116,12 @@ foreach ($p in $media, (Join-Path $work 'install.wim')) {
     }
 }
 New-Item -ItemType Directory -Force -Path $media | Out-Null
+# Готовый ISO может держать другая программа (чаще всего виртуалка, к которой он
+# подключён как DVD). Проверяем сразу, а не после 10 минут сборки.
+if ($target -eq 'iso' -and (Test-Path -LiteralPath $output)) {
+    try { $probe = [IO.File]::Open($output, 'Open', 'ReadWrite', 'None'); $probe.Close() }
+    catch { throw "The file $output is in use by another program (often a virtual machine that has it attached as a DVD). Close or detach it and run the build again." }
+}
 $root = [IO.Path]::GetPathRoot($work)
 $free = (New-Object IO.DriveInfo $root).AvailableFreeSpace
 if ($free -lt $needGB * 1GB) { throw "Not enough free space on ${root}: need about $needGB GB, free $([math]::Round($free / 1GB)) GB. Pick another work folder in WinForge." }
@@ -1083,6 +1150,53 @@ Move-Item $newWim $wim -Force
 
 Step 3 'Adding the answer file with the WinForge tweaks...'
 Copy-Item (Join-Path $here 'autounattend.xml') $media -Force
+"#;
+
+/// Выгрузка драйверов этого ПК в `$WinPEDriver$\ThisPC` носителя. Сначала
+/// Export-WindowsDriver, при ошибке — pnputil. Временная папка внутри `$work`.
+const DRIVER_EXPORT: &str = r#"Test-Cancel
+Write-Host '   + drivers of this PC (can take a few minutes)'
+Report 'PCT -1'
+$exp = Join-Path $work 'this-pc-drivers'
+Remove-Item -LiteralPath $exp -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $exp | Out-Null
+try { Export-WindowsDriver -Online -Destination $exp -ErrorAction Stop | Out-Null }
+catch {
+    Write-Host "   Export-WindowsDriver failed ($($_.Exception.Message)), trying pnputil"
+    # stderr сливает cmd: в PowerShell 5.1 с ErrorActionPreference=Stop `2>&1` превращает его в ошибку.
+    $out = cmd.exe /c "pnputil.exe /export-driver * `"$exp`" 2>&1"
+    if ($LASTEXITCODE -ne 0) { Write-Host "   pnputil: $((@($out) | Select-Object -Last 2) -join ' | ')" }
+}
+Test-Cancel
+# -File: иначе -Filter *.inf совпадает и с короткими именами папок «xxx.inf_amd64_…» (8.3).
+$infs = @(Get-ChildItem -LiteralPath $exp -Recurse -Filter *.inf -File -ErrorAction SilentlyContinue).Count
+if ($infs -gt 0) {
+    $mb = [math]::Round(((Get-ChildItem -LiteralPath $exp -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum) / 1MB)
+    Write-Host "   $infs drivers, $mb MB"
+    # Установщик держит $WinPEDriver$ в маленьком диске в памяти: гигабайты драйверов
+    # (видеокарта) обрывают установку ошибкой 0x80070070. Туда — только контроллеры
+    # дисков (без них установщик может не увидеть диск), остальное ставит specialize.
+    $pe = Join-Path $media '$WinPEDriver$\ThisPC-storage'
+    $rest = Join-Path $media 'WinForge\Drivers'
+    New-Item -ItemType Directory -Force -Path $rest | Out-Null
+    $storage = 0
+    foreach ($d in @(Get-ChildItem -LiteralPath $exp -Directory)) {
+        Test-Cancel
+        $inf = Get-ChildItem -LiteralPath $d.FullName -Filter *.inf -File | Select-Object -First 1
+        $m = if ($inf) { Select-String -LiteralPath $inf.FullName -Pattern '^\s*Class\s*=\s*"?(\w+)' | Select-Object -First 1 } else { $null }
+        $class = if ($m) { $m.Matches[0].Groups[1].Value } else { '' }
+        $to = if ($class -in @('SCSIAdapter', 'HDC')) { $storage++; $pe } else { $rest }
+        robocopy $d.FullName (Join-Path $to $d.Name) /E /NFL /NDL /NJH /NJS /NP | Out-Null
+        if ($LASTEXITCODE -ge 8) { Warn "   driver not copied: $($d.Name)" }
+    }
+    # Файлы прямо в корне выгрузки (обычно каждый драйвер в своей папке) — тоже в WinForge\Drivers.
+    if (@(Get-ChildItem -LiteralPath $exp -File).Count -gt 0) {
+        robocopy $exp (Join-Path $rest 'loose') /NFL /NDL /NJH /NJS /NP | Out-Null
+        if ($LASTEXITCODE -ge 8) { Warn '   some loose driver files were not copied' }
+    }
+    Write-Host "   disk controller drivers for Setup: $storage; the rest installs inside the new Windows"
+} else { Warn '   drivers of this PC were not exported: the image is built without them' }
+Remove-Item -LiteralPath $exp -Recurse -Force -ErrorAction SilentlyContinue
 "#;
 
 /// Шаг 4 для ISO: oscdimg из ADK, если есть, иначе встроенный IMAPI2.
@@ -1132,11 +1246,37 @@ for ($i = 0; $i -lt 20 -and -not $part.DriveLetter; $i++) { Start-Sleep -Millise
 if (-not $part.DriveLetter) { throw 'The USB partition got no drive letter.' }
 $usb = "$($part.DriveLetter):"
 Write-Host "   copying files to $usb ..."
+# Шаг 4 на флешку: копирование — 0–40 %, нарезка install.wim — 40–99 %
+# (иначе полоска дошла бы до 100 % и откатилась назад).
+[WfProgress]::From = 0; [WfProgress]::To = 40
 [WfCopy]::Tree($media, "$usb\", [string[]]@('install.wim'))
+[WfProgress]::From = 0; [WfProgress]::To = 100
 # FAT32 can't hold files over 4 GB: Windows Setup reads split install.swm natively.
 Write-Host '   splitting install.wim into install.swm parts...'
-Report 'PCT -1'
-Split-WindowsImage -ImagePath (Join-Path $media 'sources\install.wim') -SplitImagePath "$usb\sources\install.swm" -FileSize 3800 -CheckIntegrity | Out-Null
+# На флешку это самая долгая часть (несколько ГБ при 5–30 МБ/с). Отдельный процесс dism:
+# Split-WindowsImage не прерывается, а процесс при отмене можно остановить сразу.
+# Процентов dism не даёт — считаем их по размеру уже записанных частей.
+$wimPath = Join-Path $media 'sources\install.wim'
+$wimSize = [math]::Max(1, (Get-Item -LiteralPath $wimPath).Length)
+Report 'PCT 40'
+$dism = Start-Process -FilePath "$env:SystemRoot\System32\dism.exe" -WindowStyle Hidden -PassThru -ArgumentList @(
+    '/Split-Image', "/ImageFile:`"$wimPath`"", "/SWMFile:`"$usb\sources\install.swm`"", '/FileSize:3800', '/CheckIntegrity')
+$null = $dism.Handle  # без этого ExitCode у Start-Process -PassThru бывает пустым
+try {
+    while (-not $dism.HasExited) {
+        Start-Sleep -Seconds 2
+        $written = (Get-ChildItem -LiteralPath "$usb\sources" -Filter 'install*.swm' -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+        Report ('PCT {0}' -f (40 + [math]::Min(59, [int](59 * $written / $wimSize))))
+        if ($CancelFile -and (Test-Path -LiteralPath $CancelFile)) {
+            throw 'Cancelled in WinForge. The USB drive was already erased and is now incomplete: write it again before using it.'
+        }
+    }
+    $dism.WaitForExit()
+    if ($dism.ExitCode -ne 0) { throw "Could not split install.wim (dism exit code $($dism.ExitCode))." }
+} finally {
+    if (-not $dism.HasExited) { try { $dism.Kill() } catch { } }
+}
+Report 'PCT 100'
 # Boot code for older BIOS PCs (UEFI doesn't need it).
 & (Join-Path $media 'boot\bootsect.exe') /nt60 $usb /mbr | Out-Null
 Write-Host "Done: bootable USB drive $usb" -ForegroundColor Green
@@ -1193,10 +1333,17 @@ pub fn build_script(b: &BuildInput) -> String {
         s.push_str(&crlf(
             "if (Test-Path $drivers) {\n\
              \x20   Write-Host '   + drivers ($WinPEDriver$)'\n\
+             \x20   $mb = [math]::Round(((Get-ChildItem -LiteralPath $drivers -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum) / 1MB)\n\
+             \x20   if ($mb -gt 400) { Warn \"   the drivers folder is $mb MB: Setup keeps it in a small RAM disk and may stop with error 0x80070070. Keep only network and disk drivers there.\" }\n\
              \x20   robocopy $drivers (Join-Path $media '$WinPEDriver$') /E /NFL /NDL /NJH /NJS /NP | Out-Null\n\
              \x20   if ($LASTEXITCODE -ge 8) { Warn '   some drivers were not copied' }\n\
              } else { Warn \"   drivers folder not found: $drivers\" }\n",
         ));
+    }
+    if b.export_drivers {
+        // Только сторонние драйверы (видеокарта, Wi-Fi, чипсет…): встроенные в Windows и так есть.
+        // Не получилось — сборка идёт дальше без них.
+        s.push_str(&crlf(DRIVER_EXPORT));
     }
     if !b.installers.is_empty() {
         // Хэш-таблицы, а не вложенные массивы: массив из одного массива PowerShell разворачивает.
@@ -1324,11 +1471,16 @@ mod tests {
     }
 
     fn sample_build(usb: bool, drivers: &str) -> String {
+        sample_build_export(usb, drivers, false)
+    }
+
+    fn sample_build_export(usb: bool, drivers: &str, export_drivers: bool) -> String {
         build_script(&BuildInput {
             source_iso: r"D:\Win11.iso",
             output_iso: if usb { "" } else { r"D:\out\my.iso" },
             edition: "Windows 11 Pro",
             drivers,
+            export_drivers,
             work_dir: r"D:\WinForge",
             cleanup: true,
             installers: &[],
@@ -1480,6 +1632,27 @@ mod tests {
     }
 
     #[test]
+    fn app_setup_resumes_after_an_interrupted_first_sign_in() {
+        let s = setup_apps_script(
+            &[WingetInstall { id: "VideoLAN.VLC".into(), dir: None }],
+            &[CustomInstall { name: "Tool".into(), value: r"C:\WinForge\Installers\t.msi".into(), args: "/qn".into() }],
+            true,
+        );
+        // Задача входа создаётся в начале и удаляется только в самом конце.
+        let create = s.find("/SC ONLOGON").unwrap();
+        let delete = s.find("schtasks.exe /Delete /TN $taskName").unwrap();
+        assert!(create < s.find("Install-App 'VideoLAN.VLC'").unwrap());
+        assert!(delete > s.find("Install-Custom 'Tool'").unwrap());
+        assert!(delete < s.find("app setup finished").unwrap());
+        // Готовое не повторяется; «уже установлено» — не ошибка.
+        assert!(s.contains("if (Test-Done \"winget:$id\") { return }"));
+        assert!(s.contains("if (Test-Done \"installer:$name\") { return }"));
+        assert!(s.contains("-1978335189") && s.contains("--no-upgrade"));
+        // Повреждённый индекс winget (ПК выключили во время загрузки) — обновить и повторить.
+        assert!(s.contains("if ($code -eq -1978335169)") && s.contains("winget source update"));
+    }
+
+    #[test]
     fn wifi_profile_is_valid_and_escaped() {
         let x = wifi_profile_xml("Home & <5G>", "p\"ss<");
         assert!(x.contains("<name>Home &amp; &lt;5G&gt;</name>"));
@@ -1613,6 +1786,7 @@ mod tests {
             output_iso: r"D:\out.iso",
             edition: "Windows 11 Pro",
             drivers: "",
+            export_drivers: false,
             work_dir: r"D:\WinForge",
             cleanup: true,
             installers: &inst,
@@ -1678,6 +1852,15 @@ mod tests {
     #[test]
     fn build_script_has_all_stages() {
         let s = sample_build(false, "");
+        // Занятый готовый ISO (подключён к виртуалке) — понятная ошибка до первого шага.
+        assert!(s.find("is in use by another program").unwrap() < s.find("Step 1 ").unwrap());
+        // Отмена убирает недокопированную рабочую папку (только свою WinForge-work).
+        let trap = s.find("trap {").unwrap();
+        let removal = s[trap..].find("Remove-Item $work -Recurse").map(|i| i + trap).unwrap();
+        assert!(s[trap..removal].contains("(Split-Path $work -Leaf) -eq 'WinForge-work'"));
+        // trap читает $work и $cleanup в момент ошибки: они должны быть заданы до первого шага.
+        let step1 = s.find("Step 1 ").unwrap();
+        assert!(s.find("$work    = ").unwrap() < step1 && s.find("$cleanup = ").unwrap() < step1);
         // ISO без ADK: встроенный IMAPI2 с UDF 1.02.
         assert!(s.contains("$target    = 'iso'"));
         assert!(s.contains("New-BootIso -Source $media -Output $output"));
@@ -1747,6 +1930,54 @@ mod tests {
     }
 
     #[test]
+    fn this_pc_drivers_are_exported_before_writing() {
+        assert!(!sample_build(false, "").contains("Export-WindowsDriver"), "без галочки не выгружаем");
+        let s = sample_build_export(false, r"D:\Drivers", true);
+        let export = s.find("Export-WindowsDriver -Online").unwrap();
+        assert!(export > s.find("Step 3 ").unwrap() && export < s.find("Step 4 ").unwrap());
+        assert!(s.contains("cmd.exe /c \"pnputil.exe /export-driver *"), "запасной путь, stderr — через cmd");
+        // В $WinPEDriver$ — только контроллеры дисков, остальное — в WinForge\Drivers.
+        assert!(s.contains(r"$pe = Join-Path $media '$WinPEDriver$\ThisPC-storage'"));
+        assert!(s.contains(r"$rest = Join-Path $media 'WinForge\Drivers'"));
+        assert!(s.contains("@('SCSIAdapter', 'HDC')"));
+        assert!(!s.contains(r"'$WinPEDriver$\ThisPC')"), "все драйверы в $WinPEDriver$ ломают установку (0x80070070)");
+        // Не вышло — предупреждение, сборка продолжается.
+        assert!(s.contains("Warn '   drivers of this PC were not exported"));
+        assert!(s.contains("$exp = Join-Path $work 'this-pc-drivers'"), "только внутри рабочей папки");
+    }
+
+    #[test]
+    fn usb_split_reports_percent_and_can_be_cancelled() {
+        let s = sample_build(true, "");
+        // Копирование — первые 40 % шага, нарезка — дальше: полоска не откатывается назад.
+        let copy = s.find("[WfProgress]::From = 0; [WfProgress]::To = 40").unwrap();
+        let split = s.find("'/Split-Image'").unwrap();
+        assert!(copy < split);
+        let tail = &s[split..];
+        assert!(tail.contains("Report ('PCT {0}' -f (40 +"), "проценты по размеру частей");
+        // Отмена останавливает процесс dism сразу и честно говорит про флешку.
+        assert!(tail.contains("$dism.Kill()") && tail.contains("now incomplete"));
+        assert!(tail.contains("$dism.ExitCode -ne 0"));
+        assert!(tail.contains("Report 'PCT 100'"));
+        assert!(!s.contains("Split-WindowsImage -") && !s.contains("AddCommand('Split-WindowsImage')"), "не прерывается — не используем");
+    }
+
+    #[test]
+    fn this_pc_drivers_install_first_in_specialize() {
+        let s = specialize_script_with(
+            &[],
+            &[],
+            &[],
+            &SpecializeOptions { this_pc_drivers: true, wifi: true, copy_installers: true, ..Default::default() },
+        );
+        let drivers = s.find("pnputil.exe /add-driver (Join-Path $drv '*.inf') /subdirs /install").unwrap();
+        assert!(drivers < s.find("Copying own installers").unwrap());
+        assert!(drivers < s.find("netsh").unwrap(), "до Wi-Fi: нужен драйвер адаптера");
+        assert!(s.contains("Join-Path $_.Root 'WinForge\\Drivers'"));
+        assert!(!specialize_script(&[], &[], &[], false).contains("pnputil"), "без галочки не нужно");
+    }
+
+    #[test]
     fn drivers_go_to_winpedriver_folder() {
         let s = sample_build(false, r" D:\Drivers ");
         assert!(s.contains(r"$drivers = 'D:\Drivers'"));
@@ -1802,7 +2033,7 @@ mod tests {
     #[ignore = "запускает powershell.exe"]
     fn generated_scripts_parse_in_powershell() {
         for usb in [false, true] {
-            let text = ps_parse_errors(&format!("build-{usb}"), &sample_build(usb, r"D:\Drivers"));
+            let text = ps_parse_errors(&format!("build-{usb}"), &sample_build_export(usb, r"D:\Drivers", true));
             assert!(text.contains("COUNT=0"), "build usb={usb}: {text}");
         }
         let mut svc = Action {
@@ -1844,6 +2075,7 @@ mod tests {
                 guest_tools: true,
                 product_key: true,
                 kms: Some(("kms.company.local".into(), Some(1688))),
+                this_pc_drivers: true,
             },
         );
         let text = ps_parse_errors("specialize", &spec);
@@ -1937,5 +2169,33 @@ mod tests {
         let line = first_logon_line(&a).unwrap();
         assert!(line.starts_with("powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "));
         assert!(!line.contains('\''));
+    }
+}
+
+/// Скрипт установки программ для ручной проверки в виртуалке:
+/// WF_DUMP_SETUP=<файл> cargo test dump_setup_apps -- --ignored
+#[cfg(test)]
+mod dump {
+    use super::*;
+
+    #[test]
+    #[ignore = "пишет файл для ручной проверки"]
+    fn dump_setup_apps() {
+        let Ok(path) = std::env::var("WF_DUMP_SETUP") else { return };
+        let apps: Vec<WingetInstall> = [
+            "Discord.Discord", "Telegram.TelegramDesktop", "Mozilla.Firefox", "VideoLAN.VLC", "7zip.7zip",
+            "voidtools.Everything", "SumatraPDF.SumatraPDF", "Microsoft.VCRedist.2015+.x64", "Microsoft.DotNet.DesktopRuntime.8",
+        ]
+        .iter()
+        .map(|id| WingetInstall { id: (*id).into(), dir: None })
+        .collect();
+        let custom = [CustomInstall {
+            name: "7-Zip MSI test".into(),
+            value: r"C:\WinForge\Installers\7z-x64.msi".into(),
+            args: "/qn /norestart".into(),
+        }];
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice(setup_apps_script(&apps, &custom, true).as_bytes());
+        std::fs::write(path, bytes).unwrap();
     }
 }

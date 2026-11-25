@@ -141,6 +141,10 @@ pub struct Action {
     /// Оболочка для `run`: cmd (по умолчанию) | powershell.
     #[serde(default)]
     pub shell: Option<String>,
+    /// Для `run`: проверка в той же оболочке; если она печатает `True`, действие уже
+    /// применено — команда не запускается и откат не записывается.
+    #[serde(default)]
+    pub check: Option<String>,
     // --- общее ---
     /// Удалить значение (если задано `name`) или весь ключ (для реестра).
     #[serde(default)]
@@ -285,6 +289,32 @@ pub struct TweakGroup {
     /// В каталогах очистки, реестра и интегратора пункты называются `[[group.item]]`.
     #[serde(default, alias = "item")]
     pub tweak: Vec<Tweak>,
+    /// Готовые наборы пунктов группы (например, режимы Windows Update):
+    /// кнопка выбирает ровно эти пункты группы и снимает остальные.
+    #[serde(default)]
+    pub preset: Vec<GroupPreset>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GroupPreset {
+    pub name: Loc,
+    #[serde(default)]
+    pub description: Loc,
+    /// id пунктов этой же группы.
+    #[serde(default)]
+    pub tweaks: Vec<String>,
+}
+
+/// Особенность этого ПК, при которой пункт лучше не включать.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HwTrait {
+    /// Есть батарея: ноутбук или планшет.
+    Laptop,
+    /// Система на жёстком диске.
+    Hdd,
+    /// Система на SSD.
+    Ssd,
 }
 
 #[derive(Debug, Deserialize)]
@@ -305,6 +335,11 @@ pub struct Tweak {
     /// Реальные действия твика (реестр, службы, задачи, компоненты, команды).
     #[serde(default)]
     pub actions: Vec<Action>,
+    /// На каком оборудовании пункт не советуется (например, «Максимальна
+    /// продуктивність» на ноутбуке). В режиме «Цей Windows» такие пункты
+    /// помечаются и не включаются кнопками «Рекомендовані».
+    #[serde(default)]
+    pub avoid: Vec<HwTrait>,
     /// Для очистки: какие пути удалять (поддержка %ENV% и `*`).
     #[serde(default)]
     pub paths: Vec<String>,
@@ -497,6 +532,10 @@ mod tests {
         for g in c.tweak_catalogs().into_iter().flat_map(|cat| cat.group.iter()) {
             out.push(("group".into(), &g.name));
             out.push(("group".into(), &g.description));
+            for p in &g.preset {
+                out.push(("preset".into(), &p.name));
+                out.push(("preset".into(), &p.description));
+            }
             for t in &g.tweak {
                 out.push((t.id.clone(), &t.name));
                 out.push((t.id.clone(), &t.description));
@@ -685,6 +724,44 @@ mod tests {
             for act in &a.actions {
                 if let Some(p) = act.appx.as_deref().or(act.capability.as_deref()) {
                     assert!(seen.insert(p.to_lowercase()), "{}: пакет {p} уже есть в другом пункте", a.id);
+                }
+            }
+        }
+    }
+
+    /// Наборы ссылаются только на пункты своей группы.
+    #[test]
+    fn group_presets_point_into_their_group() {
+        let c = embedded();
+        let mut presets = 0;
+        for g in c.tweak_catalogs().into_iter().flat_map(|cat| cat.group.iter()) {
+            for p in &g.preset {
+                presets += 1;
+                for id in &p.tweaks {
+                    assert!(g.tweak.iter().any(|t| &t.id == id), "{}: набора {:?} нет в группе", id, p.name.en);
+                }
+            }
+        }
+        assert!(presets >= 4, "режимы Windows Update пропали");
+    }
+
+    /// Два пункта не пишут в одно и то же значение реестра разные данные:
+    /// иначе результат зависит от порядка, а откат одного ломает другой.
+    #[test]
+    fn no_two_tweaks_write_one_value_differently() {
+        let c = embedded();
+        let mut seen: std::collections::HashMap<String, (String, String)> = Default::default();
+        for g in c.tweak_catalogs().into_iter().flat_map(|cat| cat.group.iter()) {
+            for t in &g.tweak {
+                for a in t.actions.iter().filter(|a| a.kind() == ActionKind::Reg) {
+                    let Some(name) = &a.name else { continue };
+                    let key = format!("{}\\{}", a.reg.as_deref().unwrap_or("").to_lowercase(), name.to_lowercase());
+                    let value = if a.delete { "<delete>".to_string() } else { a.reg_value_text() };
+                    if let Some((other, v)) = seen.get(&key) {
+                        assert!(v == &value || other == &t.id, "{key}: {other} пише {v}, а {} — {value}", t.id);
+                    } else {
+                        seen.insert(key, (t.id.clone(), value));
+                    }
                 }
             }
         }

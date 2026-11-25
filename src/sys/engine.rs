@@ -47,6 +47,40 @@ pub enum Undo {
     },
 }
 
+impl Undo {
+    /// Что именно откатывается — для сообщений об ошибках.
+    pub fn describe(&self, l: crate::i18n::Lang) -> String {
+        match self {
+            Undo::Reg { root, subpath, name, .. } => {
+                let name = if name.is_empty() { "(Default)" } else { name.as_str() };
+                format!("{root:?}\\{subpath}\\{name}")
+            }
+            Undo::KeyCreated { root, subpath } => format!("{root:?}\\{subpath}"),
+            Undo::Task { task, .. } => format!("{} {task}", l.tr("Завдання", "Task")),
+            Undo::Feature { feature, .. } => format!("{} {feature}", l.tr("Компонент", "Feature")),
+            Undo::Run { cmd, .. } if cmd.contains("Add-WindowsCapability") => {
+                // Имена возможностей стоят в кавычках: 'Media.WindowsMediaPlayer~~~~0.0.12.0'.
+                let names: Vec<&str> = cmd
+                    .split('\'')
+                    .skip(1)
+                    .step_by(2)
+                    .map(|n| n.split('~').next().unwrap_or(n))
+                    .collect();
+                format!(
+                    "{} {} — {}",
+                    l.tr("Компонент", "Feature"),
+                    names.join(", "),
+                    l.tr("завантаження з Windows Update, кілька хвилин", "downloading from Windows Update, a few minutes")
+                )
+            }
+            Undo::Run { cmd, .. } => {
+                let short: String = cmd.chars().take(80).collect();
+                format!("{} {short}", l.tr("Команда", "Command"))
+            }
+        }
+    }
+}
+
 /// Относится ли действие к живой системе.
 pub fn applies_live(a: &Action) -> bool {
     matches!(a.when(), When::Both | When::Live)
@@ -134,6 +168,15 @@ pub fn status(a: &Action) -> Status {
                 _ => Status::Unknown,
             }
         }
+        // Команда с проверкой: проверка только читает систему.
+        ActionKind::Run => {
+            let Some(check) = &a.check else { return Status::Unknown };
+            match os::run(a.shell.as_deref().unwrap_or("cmd"), check) {
+                Ok(out) if check_says_applied(&out) => Status::Applied,
+                Ok(_) => Status::Pending,
+                Err(_) => Status::Unknown,
+            }
+        }
         _ => Status::Unknown,
     }
 }
@@ -159,6 +202,14 @@ fn apply_reg(a: &Action) -> Result<Vec<Undo>, String> {
         .and_then(reg::split)
         .ok_or_else(|| format!("поганий шлях реєстру: {:?}", a.reg))?;
     let name = a.name.clone().unwrap_or_default();
+
+    // Уже так, как нужно, — ничего не пишем и в журнал не добавляем. Так уже
+    // применённый твик не падает на защищённом ключе (например, политика виджетов
+    // Dsh, которую установщик записал от SYSTEM), а журнал отката хранит только
+    // настоящие изменения.
+    if status(a) == Status::Applied {
+        return Ok(Vec::new());
+    }
 
     if a.delete && a.name.is_none() {
         // Удаление целого ключа: откат не поддержан.
@@ -213,6 +264,15 @@ fn apply_service(a: &Action) -> Result<Vec<Undo>, String> {
     let mut undos = Vec::new();
     for (name, val) in [("Start", start), ("DelayedAutostart", delayed)] {
         let prev = reg::read_raw(Root::Hklm, &sub, name);
+        // Уже нужное значение (отсутствующий DelayedAutostart — это 0) — не трогаем.
+        let current = match &prev {
+            Some(raw) if raw.bytes.len() >= 4 => Some(u32::from_le_bytes([raw.bytes[0], raw.bytes[1], raw.bytes[2], raw.bytes[3]])),
+            None if name == "DelayedAutostart" => Some(0),
+            _ => None,
+        };
+        if current == Some(val) {
+            continue;
+        }
         reg::write(Root::Hklm, &sub, name, &ValueData::Dword(val)).map_err(|e| e.to_string())?;
         undos.push(Undo::Reg {
             root: Root::Hklm,
@@ -228,21 +288,67 @@ fn apply_service(a: &Action) -> Result<Vec<Undo>, String> {
     Ok(undos)
 }
 
+/// Включена ли задача планировщика (None — такой задачи нет).
+/// XML задачи не зависит от языка системы: `<Settings>…<Enabled>false</Enabled>`.
+fn task_enabled(task: &str) -> Option<bool> {
+    let xml = os::run("cmd", &format!("schtasks /Query /TN \"{task}\" /XML")).ok()?;
+    Some(task_xml_enabled(&xml))
+}
+
+fn task_xml_enabled(xml: &str) -> bool {
+    let settings = match (xml.find("<Settings>"), xml.find("</Settings>")) {
+        (Some(s), Some(e)) if s < e => &xml[s..e],
+        _ => xml,
+    };
+    !settings.contains("<Enabled>false</Enabled>")
+}
+
 fn apply_task(a: &Action) -> Result<Vec<Undo>, String> {
     let task = a.task.clone().ok_or("немає назви завдання")?;
     let enable = a.enabled.unwrap_or(false);
+    // Задачи нет или она уже в нужном состоянии — ничего не меняем и в журнал не пишем:
+    // иначе откат «вернул» бы то, чего до WinForge не было (например, включил телеметрию).
+    match task_enabled(&task) {
+        None => return Ok(Vec::new()),
+        Some(state) if state == enable => return Ok(Vec::new()),
+        Some(_) => {}
+    }
     let flag = if enable { "/Enable" } else { "/Disable" };
-    // Задачи может не быть — это не ошибка.
-    let out = os::run("cmd", &format!("schtasks /Change /TN \"{task}\" {flag}"));
-    match out {
+    match os::run("cmd", &format!("schtasks /Change /TN \"{task}\" {flag}")) {
         Ok(_) => Ok(vec![Undo::Task { task, enable: !enable }]),
         Err(_) => Ok(Vec::new()),
     }
 }
 
+/// Состояние компонента Windows по `dism /English /Get-FeatureInfo`:
+/// Some(true) — включён (или включится после перезагрузки), Some(false) — выключен,
+/// None — такого компонента нет или узнать не удалось.
+fn feature_enabled(feature: &str) -> Option<bool> {
+    let out = os::run(
+        "cmd",
+        &format!("dism /English /Online /Get-FeatureInfo /FeatureName:{feature}"),
+    )
+    .ok()?;
+    feature_info_enabled(&out)
+}
+
+fn feature_info_enabled(out: &str) -> Option<bool> {
+    let state = out
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("State :").or_else(|| l.trim().strip_prefix("State:")))?
+        .trim()
+        .to_lowercase();
+    Some(state.starts_with("enable"))
+}
+
 fn apply_feature(a: &Action) -> Result<Vec<Undo>, String> {
     let feature = a.feature.clone().ok_or("немає назви компонента")?;
     let enable = a.enabled.unwrap_or(false);
+    // Уже в нужном состоянии — ничего не делаем и в журнал не пишем (иначе откат
+    // включил бы, например, SMB1, который был выключен ещё до WinForge).
+    if feature_enabled(&feature) == Some(enable) {
+        return Ok(Vec::new());
+    }
     let (verb, all) = if enable { ("/Enable-Feature", " /All") } else { ("/Disable-Feature", "") };
     match os::run(
         "cmd",
@@ -314,6 +420,13 @@ fn apply_capability(a: &Action) -> Result<Vec<Undo>, String> {
 fn apply_run(a: &Action) -> Result<Vec<Undo>, String> {
     let cmd = a.run.clone().ok_or("немає команди")?;
     let shell = a.shell.clone().unwrap_or_else(|| "cmd".into());
+    // Уже применено — ничего не делаем, иначе откат «вернул» бы то, чего не было
+    // (например, сбросил бы план питания, выбранный ещё до WinForge).
+    if let Some(check) = &a.check {
+        if check_says_applied(&os::run(&shell, check).unwrap_or_default()) {
+            return Ok(Vec::new());
+        }
+    }
     os::run(&shell, &cmd)?;
     match &a.undo {
         Some(undo) => Ok(vec![Undo::Run {
@@ -322,6 +435,16 @@ fn apply_run(a: &Action) -> Result<Vec<Undo>, String> {
         }]),
         None => Ok(Vec::new()),
     }
+}
+
+/// Вывод проверки `check`: последняя непустая строка — `True`.
+fn check_says_applied(out: &str) -> bool {
+    out.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .last()
+        .map(|l| l.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
 }
 
 /// Откатывает одну запись.
@@ -374,6 +497,11 @@ pub mod os {
             c
         };
         c.creation_flags(NO_WINDOW);
+        // Не из папки WinForge: если exe лежит на сетевом пути (\\server\share),
+        // cmd.exe ругается на UNC-путь в качестве текущей папки.
+        if let Some(root) = std::env::var_os("SystemRoot") {
+            c.current_dir(std::path::PathBuf::from(root).join("System32"));
+        }
         let out = c.output().map_err(|e| e.to_string())?;
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).into_owned())
@@ -404,6 +532,44 @@ mod tests {
         assert_eq!(service_start("delayed"), (2, 1));
         assert_eq!(service_start("auto"), (2, 0));
         assert_eq!(service_start("manual"), (3, 0));
+    }
+
+    #[test]
+    fn check_output_is_read_from_last_line() {
+        assert!(check_says_applied("True\r\n"));
+        assert!(check_says_applied("warning\r\nTrue\r\n\r\n"));
+        assert!(!check_says_applied("False"));
+        assert!(!check_says_applied(""));
+    }
+
+    #[test]
+    fn capability_undo_is_described_by_name() {
+        let u = Undo::Run {
+            cmd: "foreach ($n in @('Media.WindowsMediaPlayer~~~~0.0.12.0')) { Add-WindowsCapability -Online -Name $n | Out-Null }".into(),
+            shell: "powershell".into(),
+        };
+        assert!(u.describe(crate::i18n::Lang::Uk).starts_with("Компонент Media.WindowsMediaPlayer — завантаження з Windows Update"));
+        assert!(u.describe(crate::i18n::Lang::En).starts_with("Feature Media.WindowsMediaPlayer — downloading"));
+    }
+
+    #[test]
+    fn task_state_comes_from_settings_only() {
+        let disabled = "<Task><Triggers><BootTrigger><Enabled>true</Enabled></BootTrigger></Triggers>\
+                        <Settings><Enabled>false</Enabled><Hidden>true</Hidden></Settings></Task>";
+        assert!(!task_xml_enabled(disabled));
+        // Выключенный триггер не значит выключенную задачу.
+        let enabled = "<Task><Triggers><TimeTrigger><Enabled>false</Enabled></TimeTrigger></Triggers>\
+                       <Settings><Hidden>true</Hidden></Settings></Task>";
+        assert!(task_xml_enabled(enabled));
+    }
+
+    #[test]
+    fn feature_state_is_parsed() {
+        let info = "Deployment Image Servicing and Management tool\r\n\r\nFeature Name : SMB1Protocol\r\nDisplay Name : SMB 1.0\r\nState : Disabled\r\n";
+        assert_eq!(feature_info_enabled(info), Some(false));
+        assert_eq!(feature_info_enabled("State : Enable Pending"), Some(true));
+        assert_eq!(feature_info_enabled("State : Disabled with Payload Removed"), Some(false));
+        assert_eq!(feature_info_enabled("Error: 0x800f080c"), None);
     }
 
     #[test]

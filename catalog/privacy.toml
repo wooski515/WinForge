@@ -19,6 +19,12 @@
 #   { run = "команда", undo = "откат", shell = "powershell" }  по умолчанию cmd.exe; откат — только undo
 #   when = "live" | "image" — необязательно: только для работающей системы или только для образа
 #                             (в образе run попадает в скрипт первого запуска).
+#   check = "..." — для run: проверка в той же оболочке; печатает True — уже применено.
+#
+# avoid = ["laptop" | "hdd" | "ssd"] — пункт не советуется на таком ПК (в режиме «Цей Windows»
+#                                      помечается и не включается кнопками «Рекомендовані»).
+# [[group.preset]] — готовый режим группы: name, description, tweaks = ["id", ...];
+#                    кнопка включает ровно эти пункты группы и снимает остальные.
 # Корни реестра: HKLM, HKCU, HKCR, HKU. Пути и команды — литеральные строки '...', поэтому
 # обратные слэши не экранируются; если в команде нужны одинарные кавычки — '''...'''.
 
@@ -459,6 +465,17 @@ actions = [
   { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "EdgeShoppingAssistantEnabled", dword = 0 },
   { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "PersonalizationReportingEnabled", dword = 0 },
   { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "NewTabPageContentEnabled", dword = 0 },
+]
+
+[[group.tweak]]
+id = "ad-edgefre"
+name = { uk = "Без вітальних екранів Edge", en = "No Edge welcome screens" }
+description = { uk = "Edge не вимагатиме входу, імпорту даних і «персоналізації» при першому запуску", en = "Edge won't push sign-in, data import and personalization on first launch" }
+risk = "safe"
+recommended = true
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "HideFirstRunExperience", dword = 1 },
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name = "ImportOnEachLaunch", dword = 0 },
 ]
 
 [[group.tweak]]

@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use eframe::egui::{self, vec2, Align, Align2, Color32, FontId, Layout, Margin, RichText, Stroke};
 
-use crate::catalog::{Action, Catalogs, Risk, TweakCatalog};
+use crate::catalog::{Action, Catalogs, HwTrait, Risk, TweakCatalog};
 use crate::i18n::{self, Lang};
 use crate::run;
 use crate::sys;
@@ -230,6 +230,8 @@ pub struct ImageSettings {
     pub no_network: bool,
     pub cleanup: bool,
     pub drivers_path: String,
+    /// Добавить в образ сторонние драйверы этого ПК (Export-WindowsDriver).
+    pub export_drivers: bool,
     /// Сеть Wi-Fi, к которой система подключится сама (пусто — не настраивать).
     pub wifi_ssid: String,
     /// Пароль Wi-Fi (в профиль WinForge не сохраняется).
@@ -279,6 +281,7 @@ impl Default for ImageSettings {
             no_network: true,
             cleanup: true,
             drivers_path: String::new(),
+            export_drivers: false,
             wifi_ssid: String::new(),
             wifi_password: String::new(),
             guest_tools: false,
@@ -316,6 +319,8 @@ pub enum JobKind {
     Clean,
     RegistryFix,
     ContextMenu,
+    /// Обновить все программы через winget.
+    UpdateApps,
 }
 
 impl JobKind {
@@ -323,6 +328,66 @@ impl JobKind {
     pub fn makes_restore_point(self) -> bool {
         matches!(self, JobKind::ApplyLive | JobKind::RegistryFix | JobKind::ContextMenu)
     }
+}
+
+/// Точка восстановления. Если «Защита системы» для диска C: выключена — включает
+/// её (иначе точку не создать). Windows создаёт не больше одной точки в сутки:
+/// если сегодня уже была, Checkpoint-Computer молча пропускает — откатиться можно к ней.
+/// Ошибка — одной строкой в stderr, без простыни PowerShell.
+const RESTORE_POINT_SCRIPT: &str = r#"$ErrorActionPreference = 'Stop'; try { if ((Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\SystemRestore' -Name DisableSR -ErrorAction SilentlyContinue).DisableSR -eq 1) { throw 'System Restore is turned off by policy (the Disable System Restore tweak)' }; try { Checkpoint-Computer -Description 'WinForge' -RestorePointType MODIFY_SETTINGS -WarningAction SilentlyContinue } catch { Enable-ComputerRestore -Drive "$env:SystemDrive\"; Checkpoint-Computer -Description 'WinForge' -RestorePointType MODIFY_SETTINGS -WarningAction SilentlyContinue } } catch { [Console]::Error.WriteLine('Restore point not created: ' + $_.Exception.Message); exit 1 }"#;
+
+/// Коды winget, которые для «поставить программу» означают успех:
+/// уже установлена и обновлять нечего, уже установлена, нужна перезагрузка.
+const WINGET_OK_CODES: [i64; 4] = [0, -1978335189, -1978335135, -1978334967];
+
+/// Установка программы через winget на этой системе (PowerShell). С папкой — сначала
+/// с `--location`, при неудаче — в папку по умолчанию (не все установщики её понимают).
+/// `--no-upgrade`: уже установленную программу не трогаем — обновление запущенной
+/// программы (например, открытого Firefox) прерывается и выглядело бы как ошибка.
+pub fn winget_live_script(id: &str, dir: Option<&str>) -> String {
+    let ok = WINGET_OK_CODES.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
+    let quote = |s: &str| format!("'{}'", s.replace('\'', "''"));
+    let base = format!(
+        "winget install --id {} -e --silent --no-upgrade --accept-package-agreements --accept-source-agreements --disable-interactivity",
+        quote(id)
+    );
+    let first = match dir {
+        Some(dir) => format!("{base} --location {}", quote(dir)),
+        None => base.clone(),
+    };
+    let retry = if dir.is_some() {
+        format!("if ($LASTEXITCODE -notin @({ok})) {{ {base} }}; ")
+    } else {
+        String::new()
+    };
+    format!(
+        "{first}; {retry}if ($LASTEXITCODE -in @({ok})) {{ exit 0 }} else {{ [Console]::Error.WriteLine('winget exit code ' + $LASTEXITCODE); exit 1 }}"
+    )
+}
+
+/// Обновление всех программ из источника winget (Store обновляет свои сам).
+/// winget сообщает только код последней ошибки: «часть не обновилась» и «не
+/// обновилось ничего» не различить, поэтому любая ошибка — красный шаг с подсказкой.
+/// Текст winget переведён на язык системы — судим только по коду выхода.
+pub fn winget_upgrade_all_script(l: Lang) -> String {
+    let ok = WINGET_OK_CODES.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
+    let missing = l.tr(
+        "winget не знайдено: встанови «Інсталятор застосунків» з Microsoft Store",
+        "winget not found: install App Installer from Microsoft Store",
+    );
+    let failed = l.tr(
+        "не всі програми оновилися (код winget ' + $code + '). Часто — бо вони відкриті: закрий їх і повтори",
+        "not every app was updated (winget code ' + $code + '). Often because they are open: close them and try again",
+    );
+    [
+        // Сообщения с кириллицей — в UTF-8, иначе WinForge получит кракозябры.
+        "[Console]::OutputEncoding = [Text.Encoding]::UTF8".to_string(),
+        format!("if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {{ [Console]::Error.WriteLine('{missing}'); exit 1 }}"),
+        "winget upgrade --all --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity | Out-Null; $code = $LASTEXITCODE".to_string(),
+        format!("if ($code -in @({ok})) {{ exit 0 }}"),
+        format!("[Console]::Error.WriteLine('{failed}'); exit 1"),
+    ]
+    .join("; ")
 }
 
 /// Результат генерации файлов сборки образа.
@@ -419,6 +484,19 @@ pub struct WinForgeApp {
     toast: Option<(String, f64)>,
     /// Короткие фоновые задачи: по завершении их текст показывается уведомлением.
     bg_tasks: Vec<std::sync::mpsc::Receiver<String>>,
+    /// Что применяли к этой системе раньше и на какой сборке Windows.
+    pub applied: sys::applied::AppliedState,
+    /// Сборка этой Windows сейчас.
+    pub windows_build: String,
+    /// Windows обновилась после применения: предложить проверить, что вернулось.
+    pub reapply_due: bool,
+    /// Идущее настоящее применение: подпись шага → id пункта. По окончании
+    /// успешные пункты записываются в applied.toml.
+    pending_applied: Option<std::collections::HashMap<String, String>>,
+    /// Режим группы, ждущий подтверждения опасного пункта: (все пункты группы, пункты режима).
+    pending_preset: Option<(Vec<String>, Vec<String>)>,
+    /// Советы по железу уже учтены для выбора по умолчанию.
+    pub(crate) hw_checked: bool,
 }
 
 impl WinForgeApp {
@@ -442,7 +520,16 @@ impl WinForgeApp {
             usb_confirm: String::new(),
             toast: None,
             bg_tasks: Vec::new(),
+            applied: sys::applied::load(),
+            windows_build: sys::applied::windows_build(),
+            reapply_due: false,
+            pending_applied: None,
+            pending_preset: None,
+            hw_checked: false,
         };
+        // Заранее: к переходу в «Цей Windows» особенности ПК уже будут известны.
+        sys::probe::detect_traits_in_background();
+        app.reapply_due = app.applied.build_changed(&app.windows_build);
         app.apply_preset("base");
         // Реестр и контекстное меню стартуют пустыми: это разовые действия по желанию.
         for section in [Section::Privacy, Section::System, Section::Removal, Section::Cleanup] {
@@ -519,9 +606,35 @@ impl WinForgeApp {
         }
     }
 
+    /// Почему пункт не советуется для этого ПК (только в режиме «Цей Windows»:
+    /// образ может ставиться на другой компьютер). None — советов нет.
+    pub fn hw_warning(&self, avoid: &[HwTrait]) -> Option<&'static str> {
+        if self.mode != Mode::Live || avoid.is_empty() {
+            return None;
+        }
+        let found = sys::probe::traits()?;
+        let t = avoid.iter().find(|t| found.contains(t))?;
+        Some(match t {
+            HwTrait::Laptop => self.tr("Не радимо: цей ПК — ноутбук", "Not advised: this PC is a laptop"),
+            HwTrait::Hdd => self.tr("Не радимо: Windows стоїть на HDD", "Not advised: Windows is on a hard drive"),
+            HwTrait::Ssd => self.tr("Не радимо: Windows стоїть на SSD", "Not advised: Windows is on an SSD"),
+        })
+    }
+
+    /// Не советуется ли пункт с этим id для этого ПК.
+    pub fn hw_discouraged(&self, id: &str) -> bool {
+        self.cat
+            .tweak_catalogs()
+            .into_iter()
+            .flat_map(|c| c.group.iter())
+            .flat_map(|g| g.tweak.iter())
+            .find(|t| t.id == id)
+            .is_some_and(|t| self.hw_warning(&t.avoid).is_some())
+    }
+
     pub fn set_recommended(&mut self, section: Section) {
         for (id, recommended) in self.section_items(section) {
-            if recommended {
+            if recommended && !self.hw_discouraged(&id) {
                 self.enabled.insert(id);
             } else {
                 self.enabled.remove(&id);
@@ -582,6 +695,33 @@ impl WinForgeApp {
         }
     }
 
+    /// Режим группы: включает ровно `chosen` из `all`. Опасный пункт, как и при
+    /// обычном клике, включается только после подтверждения.
+    /// Если в режиме есть опасный пункт, ничего не меняется до подтверждения
+    /// (отмена оставляет прежний выбор).
+    pub fn select_preset(&mut self, all: &[String], chosen: &[String]) {
+        let danger = chosen
+            .iter()
+            .find(|id| matches!(self.find_item(id), Some((_, Risk::Danger, _))));
+        if let Some(id) = danger {
+            self.confirm = Some(id.clone());
+            self.pending_preset = Some((all.to_vec(), chosen.to_vec()));
+            return;
+        }
+        self.set_group_selection(all, chosen);
+    }
+
+    fn set_group_selection(&mut self, all: &[String], chosen: &[String]) {
+        for id in all {
+            self.enabled.remove(id);
+        }
+        for id in chosen {
+            if self.find_item(id).is_some() {
+                self.enabled.insert(id.clone());
+            }
+        }
+    }
+
     pub fn toggle_app(&mut self, id: &str) {
         if !self.selected_apps.remove(id) {
             self.selected_apps.insert(id.to_owned());
@@ -637,19 +777,153 @@ impl WinForgeApp {
             self.job = Some(JobState::Build(self.generate_build()));
             return;
         }
+        self.pending_applied = (kind == JobKind::ApplyLive && !preview).then(|| self.applied_labels());
         let mut work = self.build_work(kind);
         // Перед настоящими изменениями — точка восстановления Windows.
         if !preview && self.tools.restore_point && kind.makes_restore_point() {
-            if let run::Work::Apply { units, .. } = &mut work {
+            if let run::Work::Apply { units, guard, .. } = &mut work {
                 if !units.is_empty() {
                     units.insert(0, self.restore_point_unit());
+                    // Без точки восстановления дальше не идём: её просили ради безопасности.
+                    *guard = true;
                 }
             }
         }
         self.job = Some(JobState::Run {
             kind,
-            runner: run::Runner::start(preview, work),
+            runner: run::Runner::start(preview, work, self.lang),
         });
+    }
+
+    /// Подписи шагов применения (как в tweak_units / removal_units) → id пунктов.
+    fn applied_labels(&self) -> std::collections::HashMap<String, String> {
+        let l = self.lang;
+        let mut map = std::collections::HashMap::new();
+        for section in [Section::Privacy, Section::System] {
+            if let Some(cat) = self.section_catalog(section) {
+                for t in cat.group.iter().flat_map(|g| g.tweak.iter()) {
+                    if self.enabled.contains(&t.id) && !t.actions.is_empty() {
+                        map.insert(t.name.get(l).to_owned(), t.id.clone());
+                    }
+                }
+            }
+        }
+        for a in self.cat.bloat.app.iter().filter(|a| self.enabled.contains(&a.id) && !a.actions.is_empty()) {
+            map.insert(a.name.get(l).to_owned(), a.id.clone());
+        }
+        map
+    }
+
+    /// Когда настоящее применение закончилось: записывает пункты, которые прошли
+    /// без ошибок, и текущую сборку Windows. Ничего не прошло — ничего не пишем.
+    fn record_applied(&mut self) {
+        let Some(JobState::Run { kind: JobKind::ApplyLive, runner }) = &self.job else { return };
+        let snap = runner.snapshot();
+        if snap.preview || !snap.finished {
+            return;
+        }
+        let Some(labels) = self.pending_applied.take() else { return };
+        let ids: Vec<String> = snap
+            .steps
+            .iter()
+            .filter(|s| matches!(s.outcome, run::Outcome::Good(_)))
+            .filter_map(|s| labels.get(&s.label).cloned())
+            .collect();
+        if !ids.is_empty() {
+            self.applied.merge(ids, &self.windows_build);
+            self.reapply_due = false;
+            let _ = sys::applied::save(&self.applied);
+        }
+    }
+
+    /// После успешного отката: убирает из списка применённого пункты, чьи
+    /// изменения реестра и служб больше не действуют. Иначе после следующего
+    /// обновления Windows отменённое выглядело бы «вернувшимся».
+    pub fn prune_applied_after_undo(&mut self) {
+        let before = self.applied.ids.len();
+        let mut keep = Vec::new();
+        for id in std::mem::take(&mut self.applied.ids) {
+            let actions: Vec<&Action> = self
+                .cat
+                .tweak_catalogs()
+                .into_iter()
+                .flat_map(|c| c.group.iter())
+                .flat_map(|g| g.tweak.iter())
+                .filter(|t| t.id == id)
+                .flat_map(|t| t.actions.iter())
+                .filter(|a| matches!(a.kind(), crate::catalog::ActionKind::Reg | crate::catalog::ActionKind::Service))
+                .collect();
+            // Без проверяемых действий (удаление приложений, задачи) — оставляем.
+            let still = actions.is_empty()
+                || actions.iter().any(|a| sys::engine::status(a) == sys::engine::Status::Applied);
+            if still {
+                keep.push(id);
+            }
+        }
+        self.applied.ids = keep;
+        if self.applied.ids.len() != before {
+            let _ = sys::applied::save(&self.applied);
+        }
+    }
+
+    /// Применённые раньше пункты, которые ещё есть в каталогах.
+    pub fn applied_known_ids(&self) -> Vec<String> {
+        let known: HashSet<String> = [Section::Privacy, Section::System, Section::Removal]
+            .into_iter()
+            .flat_map(|s| self.section_items(s))
+            .map(|(id, _)| id)
+            .collect();
+        self.applied.ids.iter().filter(|id| known.contains(*id)).cloned().collect()
+    }
+
+    /// Выбирает ровно то, что применяли раньше: остальной выбор твиков, удалений
+    /// и программ снимается, чтобы предпросмотр показал только это.
+    pub fn reselect_applied(&mut self) -> usize {
+        let ids = self.applied_known_ids();
+        for section in [Section::Privacy, Section::System, Section::Removal] {
+            self.clear_section(section);
+        }
+        self.selected_apps.clear();
+        let n = ids.len();
+        self.enabled.extend(ids);
+        n
+    }
+
+    /// Один раз в режиме «Цей Windows», когда особенности ПК известны: снимает
+    /// рекомендованные пункты, которые для этого ПК не советуются (они могли
+    /// включиться при запуске, ещё в режиме сборки).
+    fn apply_hw_hints_once(&mut self, ctx: &egui::Context) {
+        if self.hw_checked || self.mode != Mode::Live {
+            return;
+        }
+        if sys::probe::traits().is_none() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(300));
+            return;
+        }
+        self.hw_checked = true;
+        let off: Vec<String> = [Section::Privacy, Section::System]
+            .into_iter()
+            .flat_map(|s| self.section_items(s))
+            .filter(|(id, recommended)| *recommended && self.enabled.contains(id) && self.hw_discouraged(id))
+            .map(|(id, _)| id)
+            .collect();
+        if !off.is_empty() {
+            for id in &off {
+                self.enabled.remove(id);
+            }
+            let msg = match self.lang {
+                Lang::Uk => format!("Знято пунктів, які не радимо для цього ПК: {}", off.len()),
+                Lang::En => format!("Unselected items not advised for this PC: {}", off.len()),
+            };
+            self.notify(ctx, msg);
+        }
+    }
+
+    /// «Не нагадувати»: эта сборка считается проверенной.
+    pub fn dismiss_reapply(&mut self) {
+        self.applied.build = self.windows_build.clone();
+        self.reapply_due = false;
+        let _ = sys::applied::save(&self.applied);
     }
 
     /// Точка восстановления. Windows создаёт не больше одной в сутки: если сегодня
@@ -658,10 +932,7 @@ impl WinForgeApp {
         run::Unit {
             label: self.tr("Точка відновлення Windows", "Windows restore point").into(),
             actions: vec![Action {
-                run: Some(
-                    "$ErrorActionPreference = 'Stop'; try { Checkpoint-Computer -Description 'WinForge' -RestorePointType MODIFY_SETTINGS -WarningAction SilentlyContinue }                      catch { throw \"Restore point not created (is System Protection on for drive C:?): $($_.Exception.Message)\" }"
-                        .into(),
-                ),
+                run: Some(RESTORE_POINT_SCRIPT.into()),
                 shell: Some("powershell".into()),
                 when: Some("live".into()),
                 ..Default::default()
@@ -690,11 +961,26 @@ impl WinForgeApp {
                 run::Work::Apply {
                     label: self.tr("Виправлення реєстру", "Registry fixes").into(),
                     units,
+                    guard: false,
                 }
             }
             JobKind::ContextMenu => run::Work::Apply {
                 label: self.tr("Контекстне меню", "Context menu").into(),
                 units: self.integrator_units(),
+                guard: false,
+            },
+            JobKind::UpdateApps => run::Work::Apply {
+                label: self.tr("Оновлення програм", "Updating apps").into(),
+                units: vec![run::Unit {
+                    label: self.tr("Оновити всі програми (winget)", "Update all apps (winget)").into(),
+                    actions: vec![Action {
+                        run: Some(winget_upgrade_all_script(self.lang)),
+                        shell: Some("powershell".into()),
+                        when: Some("live".into()),
+                        ..Default::default()
+                    }],
+                }],
+                guard: false,
             },
             JobKind::ApplyLive => {
                 // Сначала программы: твики могут остановить службы (BITS и т.п.),
@@ -706,11 +992,13 @@ impl WinForgeApp {
                 run::Work::Apply {
                     label: self.tr("Застосування до системи", "Applying to system").into(),
                     units,
+                    guard: false,
                 }
             }
             JobKind::BuildIso => run::Work::Apply {
                 label: String::new(),
                 units: Vec::new(),
+                guard: false,
             },
         }
     }
@@ -782,21 +1070,11 @@ impl WinForgeApp {
                     units.push(run::Unit {
                         label: a.name.get(l).to_owned(),
                         actions: vec![Action {
-                            // --location — папка самой программы: у каждой своя подпапка.
-                            // Не все установщики её понимают (VC++, Telegram) — тогда
-                            // повтор в папку по умолчанию.
-                            run: Some(match sys::image::app_install_dir(&folder, a.name.get(Lang::En)) {
-                                Some(dir) => format!(
-                                    "winget install --id {id} -e --silent --accept-package-agreements --accept-source-agreements --location \"{dir}\" \
-                                     || winget install --id {id} -e --silent --accept-package-agreements --accept-source-agreements",
-                                    id = a.winget
-                                ),
-                                None => format!(
-                                    "winget install --id {} -e --silent --accept-package-agreements --accept-source-agreements",
-                                    a.winget
-                                ),
-                            }),
-                            shell: Some("cmd".into()),
+                            run: Some(winget_live_script(
+                                &a.winget,
+                                sys::image::app_install_dir(&folder, a.name.get(Lang::En)).as_deref(),
+                            )),
+                            shell: Some("powershell".into()),
                             when: Some("live".into()),
                             ..Default::default()
                         }],
@@ -808,22 +1086,19 @@ impl WinForgeApp {
             if !self.selected_apps.contains(&c.id) {
                 continue;
             }
-            let cmd = match c.kind {
-                CustomKind::Winget => format!(
-                    "winget install --id {} --silent --accept-package-agreements --accept-source-agreements",
-                    c.value
-                ),
+            let (cmd, shell) = match c.kind {
+                CustomKind::Winget => (winget_live_script(&c.value, None), "powershell"),
                 // .msi — через msiexec: сам по себе он не исполняемый файл.
                 CustomKind::Installer if c.value.trim().to_lowercase().ends_with(".msi") => {
-                    format!("msiexec /i \"{}\" {}", c.value.trim(), c.args)
+                    (format!("msiexec /i \"{}\" {}", c.value.trim(), c.args), "cmd")
                 }
-                CustomKind::Installer => format!("\"{}\" {}", c.value.trim(), c.args),
+                CustomKind::Installer => (format!("\"{}\" {}", c.value.trim(), c.args), "cmd"),
             };
             units.push(run::Unit {
                 label: c.name.clone(),
                 actions: vec![Action {
                     run: Some(cmd),
-                    shell: Some("cmd".into()),
+                    shell: Some(shell.into()),
                     when: Some("live".into()),
                     ..Default::default()
                 }],
@@ -947,6 +1222,7 @@ impl WinForgeApp {
             output_iso: self.image.output_path.trim(),
             edition: EDITIONS[self.image.edition].1,
             drivers: &self.image.drivers_path,
+            export_drivers: self.image.export_drivers,
             work_dir: self.image.work_dir.trim(),
             cleanup: self.image.cleanup,
             installers: &installers,
@@ -974,6 +1250,7 @@ impl WinForgeApp {
                 guest_tools: self.image.guest_tools,
                 product_key: product_key.is_some(),
                 kms: sys::activation::parse_kms_host(&self.image.kms_host),
+                this_pc_drivers: self.image.export_drivers,
             },
         );
         if !ssid.is_empty() || product_key.is_some() {
@@ -1105,6 +1382,9 @@ impl WinForgeApp {
     /// Переключает режим; вкладка, которой нет в новом режиме, сменяется на «Головну».
     pub fn set_mode(&mut self, mode: Mode) {
         self.mode = mode;
+        if mode == Mode::Live {
+            sys::probe::detect_traits_in_background();
+        }
         if !self.tab.in_mode(mode) {
             self.tab = Tab::Home;
         }
@@ -1296,10 +1576,18 @@ impl WinForgeApp {
 
         match decision {
             Some(true) => {
-                self.enabled.insert(id);
+                match self.pending_preset.take() {
+                    Some((all, chosen)) => self.set_group_selection(&all, &chosen),
+                    None => {
+                        self.enabled.insert(id);
+                    }
+                }
                 self.confirm = None;
             }
-            Some(false) => self.confirm = None,
+            Some(false) => {
+                self.confirm = None;
+                self.pending_preset = None;
+            }
             None => {}
         }
     }
@@ -1582,12 +1870,18 @@ impl WinForgeApp {
                     JobKind::Clean => l.tr("✨  Очищення диска", "✨  Disk cleanup"),
                     JobKind::RegistryFix => l.tr("🔧  Виправлення реєстру", "🔧  Registry fixes"),
                     JobKind::ContextMenu => l.tr("🖱  Контекстне меню", "🖱  Context menu"),
+                    JobKind::UpdateApps => l.tr("🔄  Оновлення програм", "🔄  Updating apps"),
                     JobKind::BuildIso => "",
                 };
                 let subtitle = if preview {
                     l.tr(
                         "Попередній перегляд: показано, що зміниться. Нічого не змінено.",
                         "Preview: this is what will change. Nothing has been changed.",
+                    )
+                } else if kind == JobKind::UpdateApps {
+                    l.tr(
+                        "Оновлення програм через winget. Відкотити оновлення не можна — лише перевстановити стару версію.",
+                        "Updating apps through winget. Updates can't be rolled back, only reinstalled at an older version.",
                     )
                 } else {
                     l.tr(
@@ -1675,8 +1969,8 @@ impl WinForgeApp {
                                 ),
                             )
                             .on_hover_text(l.tr(
-                                "Якщо щось піде не так — «Відновлення системи» поверне все як було",
-                                "If anything goes wrong, System Restore brings everything back",
+                                "Якщо щось піде не так — «Відновлення системи» поверне все як було. Вимкнений «Захист системи» диска C: WinForge увімкне. Якщо точку створити не вдасться, нічого не зміниться.",
+                                "If anything goes wrong, System Restore brings everything back. WinForge turns on System Protection for drive C: if it is off. If no restore point can be made, nothing is changed.",
                             ));
                         }
                         if preview && needs_admin && !elevated {
@@ -1801,6 +2095,8 @@ impl eframe::App for WinForgeApp {
         // Виджеты читают язык из контекста egui.
         i18n::set_current(ctx, self.lang);
         self.poll_tasks(ctx);
+        self.record_applied();
+        self.apply_hw_hints_once(ctx);
 
         self.sidebar(ctx);
         self.bottom_bar(ctx);
@@ -1854,5 +2150,156 @@ impl eframe::App for WinForgeApp {
         self.confirm_modal(ctx);
         self.job_modal(ctx);
         self.toast_ui(ctx);
+    }
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+
+    #[test]
+    fn winget_treats_already_installed_as_success() {
+        let s = winget_live_script("Discord.Discord", None);
+        assert!(s.starts_with("winget install --id 'Discord.Discord' -e --silent --no-upgrade"));
+        assert!(s.contains("-1978335189") && s.contains("-1978335135"), "уже установлено — не ошибка");
+        assert!(!s.contains("--location"));
+        let s = winget_live_script("A.B", Some(r"D:\Apps\It's"));
+        assert!(s.contains(r"--location 'D:\Apps\It''s'"));
+        // Повтор без --location, если с папкой не вышло.
+        assert_eq!(s.matches("winget install").count(), 2);
+    }
+
+    #[test]
+    fn update_all_explains_failures_in_the_ui_language() {
+        let s = winget_upgrade_all_script(Lang::Uk);
+        assert!(s.contains("winget upgrade --all --source winget --silent"));
+        assert!(s.contains("--disable-interactivity"), "winget не должен ждать ответа");
+        assert!(s.contains("-1978335189"), "нечего обновлять — успех");
+        assert!(s.contains("закрий їх і повтори") && s.contains("OutputEncoding"));
+        assert!(winget_upgrade_all_script(Lang::En).contains("close them and try again"));
+    }
+
+    /// Шаги применения находятся по подписи: у каждого шага твика и удаления
+    /// должна быть своя подпись в applied_labels, без совпадений.
+    #[test]
+    fn every_apply_step_maps_back_to_its_item() {
+        let mut app = WinForgeApp::new();
+        for section in [Section::Privacy, Section::System, Section::Removal] {
+            for (id, _) in app.section_items(section) {
+                app.enabled.insert(id);
+            }
+        }
+        app.selected_apps.clear();
+        let labels = app.applied_labels();
+        let run::Work::Apply { units, .. } = app.build_work(JobKind::ApplyLive) else { panic!() };
+        for u in &units {
+            assert!(labels.contains_key(&u.label), "шаг без пункта: {}", u.label);
+        }
+        assert_eq!(labels.len(), units.len(), "две разные позиции с одной подписью");
+    }
+
+    #[test]
+    fn reapply_selects_only_what_was_applied() {
+        let mut app = WinForgeApp::new();
+        app.applied = sys::applied::AppliedState { build: "1".into(), ids: vec!["upd-p2p".into(), "gone-tweak".into()] };
+        assert!(!app.selected_apps.is_empty() && app.enabled.len() > 1, "по умолчанию выбрано рекомендованное");
+        assert_eq!(app.reselect_applied(), 1, "пропавших из каталога пунктов нет");
+        assert!(app.selected_apps.is_empty());
+        let chosen: Vec<&String> = [Section::Privacy, Section::System, Section::Removal]
+            .iter()
+            .flat_map(|s| app.enabled_in(*s))
+            .collect::<Vec<_>>()
+            .leak()
+            .iter()
+            .collect();
+        assert_eq!(chosen, vec!["upd-p2p"]);
+    }
+
+    #[test]
+    fn update_mode_selects_exactly_its_items_and_confirms_danger() {
+        let mut app = WinForgeApp::new();
+        let group = app
+            .cat
+            .system
+            .group
+            .iter()
+            .find(|g| g.tweak.iter().any(|t| t.id == "upd-disable"))
+            .unwrap();
+        let all: Vec<String> = group.tweak.iter().map(|t| t.id.clone()).collect();
+        let off = group.preset.iter().find(|p| p.tweaks.contains(&"upd-disable".to_string())).unwrap();
+        let off = off.tweaks.clone();
+        let manual = group.preset.iter().find(|p| p.tweaks.contains(&"upd-notify".to_string())).unwrap().tweaks.clone();
+
+        app.select_preset(&all, &manual);
+        for id in &all {
+            assert_eq!(app.enabled.contains(id), manual.contains(id), "{id}");
+        }
+        // Опасный пункт — только через подтверждение; до него выбор не меняется.
+        app.select_preset(&all, &off);
+        assert_eq!(app.confirm.as_deref(), Some("upd-disable"));
+        assert!(!app.enabled.contains("upd-disable"));
+        assert!(app.enabled.contains("upd-notify"), "отмена должна оставить прежний режим");
+        // Подтвердили — режим включается целиком.
+        let (a, c) = app.pending_preset.take().unwrap();
+        app.set_group_selection(&a, &c);
+        for id in &all {
+            assert_eq!(app.enabled.contains(id), off.contains(id), "{id}");
+        }
+        app.select_preset(&all, &[]);
+        assert!(all.iter().all(|id| !app.enabled.contains(id)));
+    }
+
+    #[test]
+    fn hardware_hints_only_in_live_mode() {
+        let mut app = WinForgeApp::new();
+        app.mode = Mode::Build;
+        assert!(app.hw_warning(&[HwTrait::Laptop, HwTrait::Hdd, HwTrait::Ssd]).is_none(), "образ может быть для другого ПК");
+        app.mode = Mode::Live;
+        assert!(app.hw_warning(&[]).is_none());
+    }
+
+    #[test]
+    fn restore_point_enables_protection_and_reports_briefly() {
+        assert!(RESTORE_POINT_SCRIPT.contains("Enable-ComputerRestore"));
+        assert!(RESTORE_POINT_SCRIPT.contains("DisableSR"));
+        assert!(RESTORE_POINT_SCRIPT.contains("[Console]::Error.WriteLine"));
+    }
+
+    /// Ошибка с кириллицей доходит до WinForge без кракозябр.
+    #[test]
+    #[ignore = "запускает powershell.exe"]
+    fn cyrillic_errors_survive_stderr() {
+        let err = crate::sys::engine::os::run(
+            "powershell",
+            "[Console]::OutputEncoding = [Text.Encoding]::UTF8; [Console]::Error.WriteLine('закрий їх і повтори'); exit 1",
+        )
+        .unwrap_err();
+        assert!(err.contains("закрий їх і повтори"), "{err}");
+    }
+
+    /// Скрипты разбираются парсером PowerShell. Запуск: cargo test -- --ignored
+    #[test]
+    #[ignore = "запускает powershell.exe"]
+    fn live_scripts_parse_in_powershell() {
+        let app = WinForgeApp::new();
+        let mut scripts = vec![
+            RESTORE_POINT_SCRIPT.to_string(),
+            winget_live_script("A.B", Some(r"D:\Apps\X")),
+            winget_upgrade_all_script(Lang::Uk),
+        ];
+        // Команды PowerShell из каталогов: run, undo и check.
+        for t in app.cat.tweak_catalogs().into_iter().flat_map(|c| c.group.iter()).flat_map(|g| g.tweak.iter()) {
+            for a in t.actions.iter().filter(|a| a.shell.as_deref() == Some("powershell")) {
+                scripts.extend([&a.run, &a.undo, &a.check].into_iter().flatten().cloned());
+            }
+        }
+        for script in scripts {
+            let check = format!(
+                "$e = $null; [void][System.Management.Automation.Language.Parser]::ParseInput({}, [ref]$null, [ref]$e); 'COUNT=' + $e.Count",
+                format!("'{}'", script.replace('\'', "''"))
+            );
+            let out = crate::sys::engine::os::run("powershell", &check).unwrap();
+            assert!(out.contains("COUNT=0"), "{script}\n{out}");
+        }
     }
 }

@@ -104,6 +104,8 @@ impl WinForgeApp {
 
         let mut clicked: Option<String> = None;
         let mut group_recommended: Option<Vec<String>> = None;
+        // (все пункты группы, пункты выбранного режима)
+        let mut group_preset: Option<(Vec<String>, Vec<String>)> = None;
 
         for (gi, group) in catalog.group.iter().enumerate() {
             let group_on = group
@@ -132,7 +134,7 @@ impl WinForgeApp {
                                 group
                                     .tweak
                                     .iter()
-                                    .filter(|t| t.recommended)
+                                    .filter(|t| t.recommended && self.hw_warning(&t.avoid).is_none())
                                     .map(|t| t.id.clone())
                                     .collect(),
                             );
@@ -145,16 +147,51 @@ impl WinForgeApp {
                 if !group.description.is_empty() {
                     ui.label(RichText::new(group.description.get(l)).size(13.0).color(MUTED));
                 }
+                if !group.preset.is_empty() {
+                    ui.add_space(6.0);
+                    ui.horizontal_wrapped(|ui| {
+                        for p in &group.preset {
+                            // Режим выбран, если в группе включены ровно его пункты.
+                            let active = group
+                                .tweak
+                                .iter()
+                                .all(|t| self.enabled.contains(&t.id) == p.tweaks.contains(&t.id));
+                            let text = if active {
+                                // Фон выбранной кнопки — ACCENT, поэтому текст белый.
+                                RichText::new(format!("✔ {}", p.name.get(l)))
+                                    .color(eframe::egui::Color32::WHITE)
+                                    .strong()
+                            } else {
+                                RichText::new(p.name.get(l))
+                            };
+                            if ui
+                                .selectable_label(active, text)
+                                .on_hover_text(p.description.get(l))
+                                .clicked()
+                            {
+                                group_preset = Some((
+                                    group.tweak.iter().map(|t| t.id.clone()).collect(),
+                                    p.tweaks.clone(),
+                                ));
+                            }
+                        }
+                    });
+                }
                 ui.add_space(6.0);
                 ui.spacing_mut().item_spacing.y = 0.0;
 
                 let count = group.tweak.len();
                 for (i, tweak) in group.tweak.iter().enumerate() {
                     let on = self.enabled.contains(&tweak.id);
+                    let hw = self.hw_warning(&tweak.avoid);
+                    let description = match hw {
+                        Some(w) => format!("⚠ {w} · {}", tweak.description.get(l)),
+                        None => tweak.description.get(l).to_owned(),
+                    };
                     let response = widgets::setting_row(
                         ui,
                         tweak.name.get(l),
-                        tweak.description.get(l),
+                        &description,
                         on,
                         Some(tweak.risk),
                         i + 1 < count,
@@ -163,7 +200,7 @@ impl WinForgeApp {
                         widgets::item_tooltip(
                             ui,
                             tweak.name.get(l),
-                            tweak.description.get(l),
+                            &description,
                             &tweak.details,
                             tweak.warning.as_ref().map(|w| w.get(l)),
                             tweak.recommended,
@@ -180,6 +217,9 @@ impl WinForgeApp {
         self.apply_toolbar(ui, section, toolbar);
         if let Some(ids) = group_recommended {
             self.enabled.extend(ids);
+        }
+        if let Some((all, chosen)) = group_preset {
+            self.select_preset(&all, &chosen);
         }
         if let Some(id) = clicked {
             self.click_item(&id);
@@ -209,7 +249,7 @@ impl WinForgeApp {
             let safe_ids: Vec<String> = group
                 .tweak
                 .iter()
-                .filter(|t| t.risk != Risk::Danger)
+                .filter(|t| t.risk != Risk::Danger && self.hw_warning(&t.avoid).is_none())
                 .map(|t| t.id.clone())
                 .collect();
             let all_ids: Vec<String> = group.tweak.iter().map(|t| t.id.clone()).collect();

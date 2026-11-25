@@ -6,8 +6,9 @@ use crate::sys::probe;
 use crate::theme::*;
 use crate::widgets::{self, GridItem};
 
-/// Минимальный размер флешки для установки Windows 11.
-const MIN_USB_GB: f64 = 8.0;
+/// Минимальный размер флешки для установки Windows 11. Флешка «на 8 ГБ» — это
+/// 8·10⁹ байт, то есть около 7,45 ГБ в счёте Windows, поэтому порог чуть ниже 8.
+const MIN_USB_GB: f64 = 7.2;
 
 impl WinForgeApp {
     fn load_usb_list(&mut self) {
@@ -185,6 +186,9 @@ impl WinForgeApp {
                 l.tr("Вбудувати драйвери з", "Include drivers from"),
                 img.drivers_path.trim()
             ));
+        }
+        if img.export_drivers {
+            lines.push(l.tr("Вбудувати драйвери цього ПК", "Include this PC's drivers").into());
         }
         if !img.wifi_ssid.trim().is_empty() {
             lines.push(format!("{}: {}", l.tr("Підключитися до Wi-Fi", "Join Wi-Fi"), img.wifi_ssid.trim()));
@@ -441,6 +445,8 @@ impl WinForgeApp {
             ui.add_space(14.0);
         }
 
+        self.reapply_card(ui);
+
         let mut go_to: Option<Tab> = None;
         let stats = [
             (self.selected_apps.len(), l.tr("програм", "apps"), Tab::Apps, ACCENT),
@@ -483,11 +489,86 @@ impl WinForgeApp {
             }
         });
 
+        ui.add_space(14.0);
+        let mut update_apps = false;
+        widgets::card(ui, |ui| {
+            widgets::section_title(ui, l.tr("🔄 Оновити всі програми", "🔄 Update all apps"));
+            ui.label(
+                RichText::new(l.tr(
+                    "Усі програми, які знає winget, оновляться до нових версій. Відкриті програми краще закрити. Програми з Microsoft Store оновлює сам Store.",
+                    "Every app winget knows about is updated to its latest version. Close open apps first. Microsoft Store apps are updated by the Store itself.",
+                ))
+                .size(13.0)
+                .color(MUTED),
+            );
+            ui.add_space(6.0);
+            if widgets::secondary_button(ui, l.tr("🔄 Оновити програми", "🔄 Update apps")).clicked() {
+                update_apps = true;
+            }
+        });
+
         if let Some(tab) = go_to {
             self.tab = tab;
         }
         if start {
             self.start_job(ui.ctx(), JobKind::ApplyLive, true);
+        }
+        if update_apps {
+            // Без предпросмотра: показывать нечего, а откат обновлений невозможен.
+            self.start_job(ui.ctx(), JobKind::UpdateApps, false);
+        }
+    }
+
+    /// Карточка «Windows оновилася»: после смены сборки предлагает снова выбрать
+    /// применённое раньше и посмотреть в предпросмотре, что вернулось.
+    pub fn reapply_card(&mut self, ui: &mut Ui) {
+        if !self.reapply_due {
+            return;
+        }
+        let known = self.applied_known_ids().len();
+        if known == 0 {
+            return;
+        }
+        let l = self.lang;
+        let mut check = false;
+        let mut dismiss = false;
+        widgets::card(ui, |ui| {
+            widgets::section_title(ui, l.tr("🔁 Windows оновилася", "🔁 Windows has been updated"));
+            ui.label(
+                RichText::new(match l {
+                    crate::i18n::Lang::Uk => format!(
+                        "Збірка {} → {}. Великі оновлення інколи повертають рекламу, телеметрію й видалені програми. WinForge вибере лише застосоване раніше (пунктів: {}; решту вибору буде знято), і перевірить, що з них знову діє, а що ні, — нічого не застосує без тебе.",
+                        self.applied.build, self.windows_build, known
+                    ),
+                    crate::i18n::Lang::En => format!(
+                        "Build {} → {}. Big updates sometimes bring back ads, telemetry and removed apps. WinForge will select only what you applied before ({} items; the rest of the selection is cleared) and check which of them still work; nothing is applied without you.",
+                        self.applied.build, self.windows_build, known
+                    ),
+                })
+                .size(13.0)
+                .color(TEXT),
+            );
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if widgets::primary_button(ui, l.tr("🔍 Перевірити, що повернулося", "🔍 Check what came back")).clicked() {
+                    check = true;
+                }
+                if widgets::secondary_button(ui, l.tr("Не нагадувати", "Don't remind me")).clicked() {
+                    dismiss = true;
+                }
+            });
+        });
+        ui.add_space(14.0);
+        if check {
+            self.reselect_applied();
+            // Выбор уже точный: советы по железу не должны снять из него пункты молча.
+            self.hw_checked = true;
+            self.set_mode(crate::app::Mode::Live);
+            self.tab = Tab::Apply;
+            self.start_job(ui.ctx(), JobKind::ApplyLive, true);
+        }
+        if dismiss {
+            self.dismiss_reapply();
         }
     }
 }

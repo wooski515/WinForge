@@ -47,6 +47,8 @@ pub struct ImageProfile {
     pub no_network: bool,
     pub cleanup: bool,
     pub drivers_path: String,
+    /// Добавить в образ драйверы этого ПК.
+    pub export_drivers: bool,
     /// Сеть Wi-Fi (пароль в профиль не пишется).
     pub wifi_ssid: String,
     pub guest_tools: bool,
@@ -94,6 +96,7 @@ impl WinForgeApp {
                 no_network: img.no_network,
                 cleanup: img.cleanup,
                 drivers_path: img.drivers_path.clone(),
+                export_drivers: img.export_drivers,
                 wifi_ssid: img.wifi_ssid.clone(),
                 guest_tools: img.guest_tools,
                 compact_os: img.compact_os,
@@ -177,6 +180,7 @@ impl WinForgeApp {
         img.no_network = i.no_network;
         img.cleanup = i.cleanup;
         img.drivers_path = i.drivers_path;
+        img.export_drivers = i.export_drivers;
         img.wifi_ssid = i.wifi_ssid;
         img.guest_tools = i.guest_tools;
         img.compact_os = i.compact_os;
@@ -272,10 +276,19 @@ mod tests {
         });
         app.selected_apps.insert("my-7".into());
         app.tools.run_commands = vec![("tm".into(), "taskmgr.exe".into())];
+        app.image.wifi_ssid = "HomeNet".into();
+        app.image.wifi_password = "wifi-pass-123".into();
+        app.image.product_key = "W269N-WFGWX-YVC9B-4J6C9-T83GX".into();
+        app.image.kms_host = "kms.company.local".into();
+        app.image.compact_os = true;
+        app.image.guest_tools = true;
+        app.image.export_drivers = true;
         let enabled_before = app.enabled.clone();
 
         let text = toml::to_string_pretty(&app.to_profile()).unwrap();
         assert!(!text.contains("secret"), "пароль не должен попадать в профиль");
+        assert!(!text.contains("wifi-pass-123"), "пароль Wi-Fi не должен попадать в профиль");
+        assert!(!text.contains("W269N"), "ключ продукта не должен попадать в профиль");
 
         let mut other = WinForgeApp::new();
         other.enabled.clear();
@@ -286,6 +299,20 @@ mod tests {
         assert!(other.selected_apps.contains("my-7"));
         assert_eq!(other.install.next_custom_id, 8);
         assert_eq!(other.tools.run_commands.len(), 1);
+        assert_eq!(other.image.wifi_ssid, "HomeNet");
+        assert_eq!(other.image.kms_host, "kms.company.local");
+        assert!(other.image.compact_os && other.image.guest_tools && other.image.export_drivers);
+        assert!(other.image.wifi_password.is_empty() && other.image.product_key.is_empty());
+    }
+
+    /// Профиль от старой версии (без новых полей) открывается.
+    #[test]
+    fn old_profile_still_loads() {
+        let old = "version = 1\nlang = \"uk\"\napps = []\nenabled = []\n[image]\nedition = \"Windows 11 Pro\"\nusername = \"User\"\n";
+        let p: Profile = toml::from_str(old).expect("старый профиль");
+        let mut app = WinForgeApp::new();
+        app.apply_profile(p);
+        assert!(app.image.kms_host.is_empty() && !app.image.compact_os && !app.image.export_drivers);
     }
 
     #[test]

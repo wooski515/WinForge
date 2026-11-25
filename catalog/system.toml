@@ -12,8 +12,9 @@ name = { uk = "План живлення «Максимальна продукт
 description = { uk = "Процесор не скидає частоти. На ноутбуках — більша витрата батареї", en = "The CPU keeps its clocks up. Drains laptop batteries faster" }
 risk = "safe"
 recommended = true
+avoid = ["laptop"]
 actions = [
-  { run = '$b = "e9a42b02-d5df-448d-aa00-03f14749eb61"; $re = "(?i)[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}"; $n = [regex]::Match(((powercfg /query $b) -join " "), "\(([^)]+)\)").Groups[1].Value; $g = powercfg /list | Where-Object { $_ -match $b -or ($n -and $_.Contains("($n)")) } | ForEach-Object { [regex]::Match($_, $re).Value } | Select-Object -First 1; if (-not $g) { $g = [regex]::Match(((powercfg /duplicatescheme $b) -join " "), $re).Value }; if (-not $g) { throw "Ultimate Performance plan is not available on this PC" }; powercfg /setactive $g', undo = "powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e", shell = "powershell" },
+  { run = '$b = "e9a42b02-d5df-448d-aa00-03f14749eb61"; $re = "(?i)[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}"; $n = [regex]::Match(((powercfg /query $b) -join " "), "\(([^)]+)\)").Groups[1].Value; $g = powercfg /list | Where-Object { $_ -match $b -or ($n -and $_.Contains("($n)")) } | ForEach-Object { [regex]::Match($_, $re).Value } | Select-Object -First 1; if (-not $g) { $g = [regex]::Match(((powercfg /duplicatescheme $b) -join " "), $re).Value }; if (-not $g) { throw "Ultimate Performance plan is not available on this PC" }; powercfg /setactive $g', undo = "powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e", shell = "powershell", check = '$b = "e9a42b02-d5df-448d-aa00-03f14749eb61"; $a = (powercfg /getactivescheme) -join " "; $n = [regex]::Match(((powercfg /query $b) -join " "), "\(([^)]+)\)").Groups[1].Value; [bool]($a.Contains($b) -or ($n -and $a.Contains("($n)")))' },
 ]
 
 [[group.tweak]]
@@ -87,8 +88,9 @@ actions = [
 [[group.tweak]]
 id = "perf-sysmain"
 name = { uk = "Вимкнути SysMain (Superfetch)", en = "Disable SysMain (Superfetch)" }
-description = { uk = "Корисно на HDD, на SSD майже не впливає", en = "Helps on hard drives, barely matters on SSDs" }
+description = { uk = "Менше фонової роботи. На SSD майже не впливає; на HDD SysMain прискорює запуск програм — там краще залишити", en = "Less background work. Barely matters on SSDs; on hard drives SysMain speeds up app launches, so keep it there" }
 risk = "moderate"
+avoid = ["hdd"]
 actions = [
   { service = "SysMain", start = "disabled" },
 ]
@@ -98,6 +100,7 @@ id = "perf-hibernate"
 name = { uk = "Вимкнути гібернацію", en = "Disable hibernation" }
 description = { uk = "Звільняє місце (hiberfil.sys), але вимикає «Швидкий запуск»", en = "Frees disk space (hiberfil.sys) but turns off Fast Startup" }
 risk = "moderate"
+avoid = ["laptop"]
 actions = [
   { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\Power', name = "HibernateEnabled", dword = 0 },
   { run = "powercfg /hibernate off", undo = "powercfg /hibernate on", when = "live" },
@@ -120,6 +123,73 @@ description = { uk = "Справжнє вимкнення ПК: менше ди�
 risk = "safe"
 actions = [
   { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power', name = "HiberbootEnabled", dword = 0 },
+]
+
+[[group]]
+name = { uk = "Ігри та затримки", en = "Games and latency" }
+description = { uk = "Тонкі налаштування для ігор. Ефект залежить від гри й заліза — вмикай по одному й перевіряй. Нічого з цього не вимикає захист.", en = "Fine-tuning for games. The effect depends on the game and hardware: turn them on one at a time and check. None of these turn off protection." }
+
+[[group.tweak]]
+id = "game-priority"
+name = { uk = "Пріоритет активного вікна", en = "Priority for the active window" }
+description = { uk = "Процесор частіше віддає час грі, яка зараз на екрані (Win32PrioritySeparation = 42)", en = "The CPU gives more time to the game on screen (Win32PrioritySeparation = 42)" }
+risk = "moderate"
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl', name = "Win32PrioritySeparation", dword = 42 },
+]
+
+[[group.tweak]]
+id = "game-mmcss"
+name = { uk = "Вищий пріоритет ігор для процесора й відеокарти", en = "Higher CPU and GPU priority for games" }
+description = { uk = "Планувальник мультимедіа (MMCSS) ставить ігри вище за фонові задачі", en = "The multimedia scheduler (MMCSS) puts games ahead of background tasks" }
+risk = "moderate"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games', name = "GPU Priority", dword = 8 },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games', name = "Priority", dword = 6 },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games', name = "Scheduling Category", sz = "High" },
+  { reg = 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games', name = "SFIO Priority", sz = "High" },
+]
+
+[[group.tweak]]
+id = "game-fso"
+name = { uk = "Вимкнути оптимізацію повноекранного режиму", en = "Disable fullscreen optimizations" }
+description = { uk = "Справжній повноекранний режим для старих ігор DirectX. Може зламати HDR і накладки в нових іграх", en = "True exclusive fullscreen for older DirectX games. May break HDR and overlays in newer games" }
+risk = "moderate"
+actions = [
+  { reg = 'HKCU\System\GameConfigStore', name = "GameDVR_FSEBehaviorMode", dword = 2 },
+  { reg = 'HKCU\System\GameConfigStore', name = "GameDVR_FSEBehavior", dword = 2 },
+  { reg = 'HKCU\System\GameConfigStore', name = "GameDVR_HonorUserFSEBehaviorMode", dword = 1 },
+  { reg = 'HKCU\System\GameConfigStore', name = "GameDVR_DXGIHonorFSEWindowsCompatible", dword = 1 },
+  # Windows при первом входе сбрасывает два последних значения в 0 (проверено в виртуалке) — пишем ещё раз после входа.
+  { run = 'reg add "HKCU\System\GameConfigStore" /v GameDVR_HonorUserFSEBehaviorMode /t REG_DWORD /d 1 /f >nul & reg add "HKCU\System\GameConfigStore" /v GameDVR_DXGIHonorFSEWindowsCompatible /t REG_DWORD /d 1 /f >nul', when = "image" },
+]
+
+[[group.tweak]]
+id = "game-powerthrottling"
+name = { uk = "Вимкнути обмеження фонових процесів (Power Throttling)", en = "Disable Power Throttling" }
+description = { uk = "Windows не пригальмовує програми у фоні. Більше енергії, тепла й шуму", en = "Windows stops slowing down background programs. More power use, heat and noise" }
+risk = "moderate"
+avoid = ["laptop"]
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling', name = "PowerThrottlingOff", dword = 1 },
+]
+
+[[group.tweak]]
+id = "game-timer"
+name = { uk = "Точний системний таймер для ігор", en = "Precise system timer for games" }
+description = { uk = "Як до Windows 10 2004: запит гри на точний таймер діє на всю систему. Трохи більша витрата енергії", en = "As before Windows 10 2004: a game's request for a precise timer applies system-wide. Slightly more power use" }
+risk = "moderate"
+actions = [
+  { reg = 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\kernel', name = "GlobalTimerResolutionRequests", dword = 1 },
+]
+
+[[group.tweak]]
+id = "game-nagle"
+name = { uk = "Вимкнути алгоритм Нейгла", en = "Disable Nagle's algorithm" }
+description = { uk = "TCP-пакети йдуть одразу, без об'єднання. Допомагає деяким онлайн-іграм, частіше — без різниці", en = "TCP packets go out at once instead of being batched. Helps some online games; often no difference" }
+risk = "moderate"
+actions = [
+  { run = '''Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' | ForEach-Object { New-ItemProperty -Path $_.PSPath -Name TcpAckFrequency -Value 1 -PropertyType DWord -Force | Out-Null; New-ItemProperty -Path $_.PSPath -Name TCPNoDelay -Value 1 -PropertyType DWord -Force | Out-Null }''', undo = '''Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' | ForEach-Object { Remove-ItemProperty -Path $_.PSPath -Name TcpAckFrequency, TCPNoDelay -ErrorAction SilentlyContinue }''', shell = "powershell", check = '''$k = @(Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' | ForEach-Object { Get-ItemProperty -Path $_.PSPath }); [bool]($k.Count -gt 0 -and -not ($k | Where-Object { $_.TcpAckFrequency -ne 1 -or $_.TCPNoDelay -ne 1 }))''' },
 ]
 
 [[group]]
@@ -419,7 +489,28 @@ actions = [
 
 [[group]]
 name = { uk = "Оновлення Windows", en = "Windows Update" }
-description = { uk = "Контроль над тим, коли й що оновлюється.", en = "Control what gets updated and when." }
+description = { uk = "Контроль над тим, коли й що оновлюється. Готові режими — кнопками нижче.", en = "Control what gets updated and when. Ready-made modes are the buttons below." }
+
+# Режимы: кнопка выбирает ровно эти пункты группы и снимает остальные.
+[[group.preset]]
+name = { uk = "Як у Windows", en = "Windows default" }
+description = { uk = "Нічого не змінювати. Уже застосоване раніше повертається через «Відкат»", en = "Change nothing. To undo what was applied earlier, use Undo" }
+tweaks = []
+
+[[group.preset]]
+name = { uk = "Лише безпека", en = "Security only" }
+description = { uk = "Виправлення безпеки приходять, великі оновлення — через рік, драйвери не замінюються", en = "Security fixes arrive, feature updates wait a year, drivers are not replaced" }
+tweaks = ["upd-noreboot", "upd-defer", "upd-nodrivers", "upd-p2p"]
+
+[[group.preset]]
+name = { uk = "Вручну", en = "Manual" }
+description = { uk = "Windows лише повідомляє про оновлення — завантажуєш і ставиш ти", en = "Windows only tells you about updates; you download and install them" }
+tweaks = ["upd-notify", "upd-noreboot", "upd-nodrivers", "upd-p2p"]
+
+[[group.preset]]
+name = { uk = "Вимкнено", en = "Off" }
+description = { uk = "Оновлення зупинено повністю. Небезпечно: без виправлень безпеки", en = "Updates stopped completely. Risky: no security fixes" }
+tweaks = ["upd-disable", "upd-p2p"]
 
 [[group.tweak]]
 id = "upd-noreboot"
@@ -439,6 +530,15 @@ risk = "moderate"
 actions = [
   { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name = "DeferFeatureUpdates", dword = 1 },
   { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name = "DeferFeatureUpdatesPeriodInDays", dword = 365 },
+]
+
+[[group.tweak]]
+id = "upd-notify"
+name = { uk = "Лише повідомляти про оновлення", en = "Only notify about updates" }
+description = { uk = "Windows не завантажує оновлення сама — кнопка «Завантажити» в Параметрах", en = "Windows doesn't download updates by itself; press Download in Settings" }
+risk = "moderate"
+actions = [
+  { reg = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU', name = "AUOptions", dword = 2 },
 ]
 
 [[group.tweak]]
@@ -633,11 +733,14 @@ actions = [
 [[group.tweak]]
 id = "feat-wsl"
 name = { uk = "Підсистема Windows для Linux (WSL)", en = "Windows Subsystem for Linux (WSL)" }
-description = { uk = "Linux у Windows. Потрібна увімкнена віртуалізація в BIOS", en = "Linux inside Windows. Needs virtualization enabled in the BIOS" }
+description = { uk = "Linux у Windows. Потрібні інтернет і увімкнена віртуалізація в BIOS; запрацює після перезавантаження", en = "Linux inside Windows. Needs the internet and virtualization in the BIOS; works after a restart" }
 risk = "safe"
 actions = [
   { feature = "Microsoft-Windows-Subsystem-Linux", enabled = true },
   { feature = "VirtualMachinePlatform", enabled = true },
+  # У новых Windows 11 сам WSL — отдельная программа: компонент без неё пишет «не установлено».
+  # Дистрибутив не ставим — его выбирают потом (wsl --install -d Ubuntu).
+  { run = "wsl.exe --install --no-distribution", shell = "cmd" },
 ]
 
 [[group.tweak]]

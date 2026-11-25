@@ -346,6 +346,26 @@ impl WinForgeApp {
                     browse_drivers = true;
                 }
             });
+            ui.add_space(6.0);
+            if widgets::setting_row(
+                ui,
+                l.tr("Додати драйвери цього ПК", "Add this PC's drivers"),
+                l.tr(
+                    "Відеокарта, Wi-Fi, чипсет — для перевстановлення на цьому ж комп'ютері. Образ більший на 0,5–4 ГБ (з драйвером відеокарти NVIDIA — до 3–4 ГБ)",
+                    "Graphics, Wi-Fi, chipset: for reinstalling on this same computer. The image grows by 0.5–4 GB (up to 3–4 GB with an NVIDIA graphics driver)",
+                ),
+                self.image.export_drivers,
+                Some(Risk::Safe),
+                false,
+            )
+            .on_hover_text(l.tr(
+                "Під час збірки WinForge вивантажить сторонні драйвери цієї системи (Export-WindowsDriver). Драйвери контролерів дисків потраплять в установник, решта встановиться всередині нової Windows на етапі налаштування. Вбудовані драйвери Windows не потрібні — вони й так є в образі.",
+                "During the build WinForge exports this system's third-party drivers (Export-WindowsDriver). Disk controller drivers go into Setup; the rest install inside the new Windows during setup. Windows' own drivers are already in the image.",
+            ))
+            .clicked()
+            {
+                self.image.export_drivers ^= true;
+            }
         });
         ui.add_space(14.0);
 

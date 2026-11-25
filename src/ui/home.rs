@@ -46,6 +46,7 @@ impl WinForgeApp {
             });
         }
         ui.add_space(18.0);
+        self.reapply_card(ui);
 
         let mut go_to: Option<Tab> = None;
         let mut mode: Option<Mode> = None;

@@ -83,7 +83,12 @@ pub struct ToolsState {
     pub iso_scan: Option<(String, Receiver<Result<Vec<String>, String>>)>,
     // Откат: журналы применений и идущий откат.
     pub journals: Option<Vec<(std::path::PathBuf, crate::sys::Journal)>>,
-    pub rollback_rx: Option<Receiver<String>>,
+    /// Идёт откат: по завершении — (итог, ошибки).
+    pub rollback_rx: Option<Receiver<(usize, Vec<String>)>>,
+    /// Итог последнего отката — показывается на странице, пока её не закроют.
+    pub rollback_result: Option<(usize, Vec<String>)>,
+    /// Что откатывается прямо сейчас: «12/149 · Компонент …».
+    pub rollback_step: std::sync::Arc<std::sync::Mutex<String>>,
     // Флешки для записи сборки (загружаются в фоне).
     pub usb_list: Option<Vec<probe::UsbDisk>>,
     pub usb_rx: Option<Receiver<Vec<probe::UsbDisk>>>,
@@ -135,6 +140,8 @@ impl Default for ToolsState {
             iso_scan: None,
             journals: None,
             rollback_rx: None,
+            rollback_result: None,
+            rollback_step: Default::default(),
             usb_list: None,
             usb_rx: None,
         }

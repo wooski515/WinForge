@@ -4,6 +4,7 @@
 //! Весь слой изолирован от интерфейса: UI вызывает эти функции, а не winapi.
 
 pub mod activation;
+pub mod applied;
 pub mod clean;
 pub mod engine;
 pub mod image;
@@ -266,19 +267,40 @@ pub fn list_journals() -> Vec<(PathBuf, Journal)> {
     journals
 }
 
+/// Подпись журнала на языке интерфейса (журнал хранит её на языке, на котором его записали).
+pub fn journal_label(label: &str, l: crate::i18n::Lang) -> String {
+    const KNOWN: [(&str, &str); 4] = [
+        ("Застосування до системи", "Applying to system"),
+        ("Виправлення реєстру", "Registry fixes"),
+        ("Контекстне меню", "Context menu"),
+        ("Оновлення програм", "Updating apps"),
+    ];
+    KNOWN
+        .iter()
+        .find(|(uk, en)| label == *uk || label == *en)
+        .map(|(uk, en)| l.tr(uk, en).to_owned())
+        .unwrap_or_else(|| label.to_owned())
+}
+
 /// Помечает журнал откаченным (файл переименовывается и больше не показывается).
 pub fn mark_rolled_back(path: &std::path::Path) {
     let _ = std::fs::rename(path, path.with_extension("rolledback"));
 }
 
 /// Откатывает журнал (в обратном порядке). Возвращает (успешно, ошибки).
-pub fn rollback(journal: &Journal) -> (usize, Vec<String>) {
+pub fn rollback(
+    journal: &Journal,
+    l: crate::i18n::Lang,
+    mut on_step: impl FnMut(usize, usize, &str),
+) -> (usize, Vec<String>) {
     let mut ok = 0;
     let mut errors = Vec::new();
-    for undo in journal.undos.iter().rev() {
+    let total = journal.undos.len();
+    for (i, undo) in journal.undos.iter().rev().enumerate() {
+        on_step(i + 1, total, &undo.describe(l));
         match engine::revert(undo) {
             Ok(()) => ok += 1,
-            Err(e) => errors.push(e),
+            Err(e) => errors.push(format!("{}: {}", undo.describe(l), e.trim())),
         }
     }
     (ok, errors)

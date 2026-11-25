@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use crate::catalog::Action;
+use crate::i18n::Lang;
 use crate::sys::{self, clean, engine};
 
 /// Итог одного шага (задаёт цвет и текст в интерфейсе).
@@ -81,7 +82,9 @@ pub struct CleanUnit {
 }
 
 pub enum Work {
-    Apply { label: String, units: Vec<Unit> },
+    /// `guard`: первый шаг — проверка безопасности (точка восстановления). Если он
+    /// не удался, остальное не применяется.
+    Apply { label: String, units: Vec<Unit>, guard: bool },
     Clean { units: Vec<CleanUnit> },
 }
 
@@ -91,14 +94,14 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn start(preview: bool, work: Work) -> Self {
+    pub fn start(preview: bool, work: Work, lang: Lang) -> Self {
         let labels: Vec<String> = match &work {
             Work::Apply { units, .. } => units.iter().map(|u| u.label.clone()).collect(),
             Work::Clean { units } => units.iter().map(|u| u.label.clone()).collect(),
         };
         let progress = Arc::new(Mutex::new(Progress::new(preview, labels)));
         let shared = progress.clone();
-        let handle = std::thread::spawn(move || run_work(shared, preview, work));
+        let handle = std::thread::spawn(move || run_work(shared, preview, work, lang));
         Self {
             progress,
             _handle: handle,
@@ -126,14 +129,14 @@ fn finish(progress: &Arc<Mutex<Progress>>, summary: String) {
     }
 }
 
-fn run_work(progress: Arc<Mutex<Progress>>, preview: bool, work: Work) {
+fn run_work(progress: Arc<Mutex<Progress>>, preview: bool, work: Work, l: Lang) {
     match work {
-        Work::Apply { label, units } => run_apply(&progress, preview, label, units),
-        Work::Clean { units } => run_clean(&progress, preview, units),
+        Work::Apply { label, units, guard } => run_apply(&progress, preview, label, units, guard, l),
+        Work::Clean { units } => run_clean(&progress, preview, units, l),
     }
 }
 
-fn run_apply(progress: &Arc<Mutex<Progress>>, preview: bool, label: String, units: Vec<Unit>) {
+fn run_apply(progress: &Arc<Mutex<Progress>>, preview: bool, label: String, units: Vec<Unit>, guard: bool, l: Lang) {
     let mut journal = sys::Journal::new(label);
     let mut changed = 0usize;
     let mut failed = 0usize;
@@ -156,14 +159,20 @@ fn run_apply(progress: &Arc<Mutex<Progress>>, preview: bool, label: String, unit
             }
             let total = applied + pending + unknown + na;
             if total > 0 && na == total {
-                set(progress, i, Outcome::Good("не застосовно на цій системі".into()));
+                set(progress, i, Outcome::Good(l.tr("не застосовно на цій системі", "not applicable on this system").into()));
             } else if pending == 0 && unknown == 0 && total > 0 {
-                set(progress, i, Outcome::Good(format!("вже застосовано ({applied}/{total})")));
+                set(progress, i, Outcome::Good(match l {
+                    Lang::Uk => format!("вже застосовано ({applied}/{total})"),
+                    Lang::En => format!("already applied ({applied}/{total})"),
+                }));
             } else if pending > 0 {
                 changed += 1;
-                set(progress, i, Outcome::Warn(format!("буде змінено ({pending} з {total})")));
+                set(progress, i, Outcome::Warn(match l {
+                    Lang::Uk => format!("буде змінено ({pending} з {total})"),
+                    Lang::En => format!("will change ({pending} of {total})"),
+                }));
             } else {
-                set(progress, i, Outcome::Warn("перевірка під час застосування".into()));
+                set(progress, i, Outcome::Warn(l.tr("перевірка під час застосування", "checked while applying").into()));
             }
         } else {
             // Реальное применение.
@@ -189,61 +198,89 @@ fn run_apply(progress: &Arc<Mutex<Progress>>, preview: bool, label: String, unit
             }
             if errors.is_empty() {
                 changed += 1;
-                set(progress, i, Outcome::Good("готово".into()));
+                set(progress, i, Outcome::Good(l.tr("готово", "done").into()));
             } else {
                 failed += 1;
                 set(progress, i, Outcome::Bad(errors.join("; ")));
+                if guard && i == 0 {
+                    // Без точки восстановления систему не трогаем.
+                    for j in 1..units.len() {
+                        set(progress, j, Outcome::Warn(l.tr("не застосовано", "not applied").into()));
+                    }
+                    finish(
+                        progress,
+                        l.tr(
+                            "Точку відновлення не створено, тому нічого не змінено. Увімкни «Захист системи» для диска C: або зніми галочку точки відновлення.",
+                            "No restore point was created, so nothing was changed. Turn on System Protection for drive C: or untick the restore point option.",
+                        )
+                        .into(),
+                    );
+                    return;
+                }
             }
         }
     }
 
     if preview {
-        finish(progress, format!("Буде змінено пунктів: {changed} з {}", units.len()));
+        finish(
+            progress,
+            match l {
+                Lang::Uk => format!("Буде змінено пунктів: {changed} з {}", units.len()),
+                Lang::En => format!("Items that will change: {changed} of {}", units.len()),
+            },
+        );
     } else {
         let saved = if journal.undos.is_empty() { None } else { journal.save().ok() };
         let mut summary = match saved {
-            Some(path) => format!(
-                "Застосовано: {changed}, помилок: {failed}. Журнал відкату: {}",
-                path.display()
-            ),
-            None => format!("Застосовано: {changed}, помилок: {failed}"),
+            Some(path) => match l {
+                Lang::Uk => format!("Застосовано: {changed}, помилок: {failed}. Журнал відкату: {}", path.display()),
+                Lang::En => format!("Applied: {changed}, errors: {failed}. Undo journal: {}", path.display()),
+            },
+            None => match l {
+                Lang::Uk => format!("Застосовано: {changed}, помилок: {failed}"),
+                Lang::En => format!("Applied: {changed}, errors: {failed}"),
+            },
         };
-        summary.push_str("\nЧастина змін з'явиться після перезапуску Провідника або перезавантаження.");
+        summary.push_str(l.tr(
+            "\nЧастина змін з'явиться після перезапуску Провідника або перезавантаження.",
+            "\nSome changes appear after restarting Explorer or the PC.",
+        ));
         crate::sys::probe::broadcast_settings();
         finish(progress, summary);
     }
 }
 
-fn run_clean(progress: &Arc<Mutex<Progress>>, preview: bool, units: Vec<CleanUnit>) {
+fn run_clean(progress: &Arc<Mutex<Progress>>, preview: bool, units: Vec<CleanUnit>, l: Lang) {
     let mut total_bytes = 0u64;
     for (i, unit) in units.iter().enumerate() {
         set(progress, i, Outcome::Active);
         if preview {
             let bytes = clean::measure(&unit.paths);
             total_bytes += bytes;
-            set(progress, i, Outcome::Warn(format!("знайдено {}", fmt_bytes(bytes))));
+            set(progress, i, Outcome::Warn(format!("{} {}", l.tr("знайдено", "found"), fmt_bytes(bytes, l))));
         } else {
             let freed = clean::clean(&unit.paths, unit.recycle, &unit.stop_services);
             total_bytes += freed;
-            set(progress, i, Outcome::Good(format!("звільнено {}", fmt_bytes(freed))));
+            set(progress, i, Outcome::Good(format!("{} {}", l.tr("звільнено", "freed"), fmt_bytes(freed, l))));
         }
     }
-    let verb = if preview { "Можна звільнити" } else { "Звільнено" };
-    finish(progress, format!("{verb}: {}", fmt_bytes(total_bytes)));
+    let verb = if preview { l.tr("Можна звільнити", "Can be freed") } else { l.tr("Звільнено", "Freed") };
+    finish(progress, format!("{verb}: {}", fmt_bytes(total_bytes, l)));
 }
 
 /// Байты → человекочитаемый размер.
-pub fn fmt_bytes(bytes: u64) -> String {
+pub fn fmt_bytes(bytes: u64, l: Lang) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
     const GB: u64 = MB * 1024;
     if bytes >= GB {
-        format!("{:.1} ГБ", bytes as f64 / GB as f64)
+        format!("{:.1} {}", bytes as f64 / GB as f64, l.tr("ГБ", "GB"))
     } else if bytes >= MB {
-        format!("{:.0} МБ", bytes as f64 / MB as f64)
+        format!("{:.0} {}", bytes as f64 / MB as f64, l.tr("МБ", "MB"))
     } else if bytes >= KB {
-        format!("{:.0} КБ", bytes as f64 / KB as f64)
+        format!("{:.0} {}", bytes as f64 / KB as f64, l.tr("КБ", "KB"))
     } else {
-        format!("{bytes} Б")
+        format!("{bytes} {}", l.tr("Б", "B"))
     }
 }
+
