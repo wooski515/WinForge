@@ -1257,7 +1257,9 @@ Write-Host '   splitting install.wim into install.swm parts...'
 # Split-WindowsImage не прерывается, а процесс при отмене можно остановить сразу.
 # Процентов dism не даёт — считаем их по размеру уже записанных частей.
 $wimPath = Join-Path $media 'sources\install.wim'
-$wimSize = [math]::Max(1, (Get-Item -LiteralPath $wimPath).Length)
+# [int64] у обоих аргументов: иначе PowerShell 5.1 выбирает Max(int, int) и падает
+# на файле больше 2 ГБ («Value was either too large or too small for an Int32»).
+$wimSize = [math]::Max([int64]1, [int64](Get-Item -LiteralPath $wimPath).Length)
 Report 'PCT 40'
 $dism = Start-Process -FilePath "$env:SystemRoot\System32\dism.exe" -WindowStyle Hidden -PassThru -ArgumentList @(
     '/Split-Image', "/ImageFile:`"$wimPath`"", "/SWMFile:`"$usb\sources\install.swm`"", '/FileSize:3800', '/CheckIntegrity')
@@ -1266,7 +1268,7 @@ try {
     while (-not $dism.HasExited) {
         Start-Sleep -Seconds 2
         $written = (Get-ChildItem -LiteralPath "$usb\sources" -Filter 'install*.swm' -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
-        Report ('PCT {0}' -f (40 + [math]::Min(59, [int](59 * $written / $wimSize))))
+        Report ('PCT {0}' -f (40 + [math]::Min(59, [int](59 * [double]$written / $wimSize))))
         if ($CancelFile -and (Test-Path -LiteralPath $CancelFile)) {
             throw 'Cancelled in WinForge. The USB drive was already erased and is now incomplete: write it again before using it.'
         }
@@ -2005,6 +2007,42 @@ mod tests {
             let at = s.find(destructive).unwrap();
             assert!(checks < at && confirm < at, "{destructive} до проверок/подтверждения");
         }
+    }
+
+    /// Проценты нарезки считаются в настоящем PowerShell 5.1 на install.wim больше 2 ГБ
+    /// (раньше [math]::Max(1, размер) падал: «Value was either too large or too small for an Int32»).
+    /// Запуск: cargo test -- --ignored
+    #[test]
+    #[ignore = "запускает powershell.exe"]
+    fn usb_split_percent_works_for_wim_over_2gb() {
+        let s = sample_build(true, "");
+        let line = |start: &str| s.lines().find(|l| l.trim_start().starts_with(start)).unwrap().trim().to_owned();
+        let size = line("$wimSize =");
+        let pct = line("Report ('PCT {0}'");
+        let dir = std::env::temp_dir().join(format!("wf-wim-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Файл на 3 ГБ без записи данных: SetLength только меняет длину.
+        let wim = dir.join("install.wim");
+        std::fs::File::create(&wim).unwrap().set_len(3 * 1024 * 1024 * 1024).unwrap();
+        let script = format!(
+            "$ErrorActionPreference = 'Stop'\r\nfunction Report($l) {{ $l }}\r\n$wimPath = '{}'\r\n{size}\r\n\
+             foreach ($written in @($null, [double]0, [double]3221225472, [double]9e9)) {{ {pct} }}\r\n",
+            wim.display()
+        );
+        let ps1 = dir.join("t.ps1");
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice(script.as_bytes());
+        std::fs::write(&ps1, bytes).unwrap();
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(&ps1)
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        assert!(out.status.success(), "{text}\n{}", String::from_utf8_lossy(&out.stderr));
+        let got: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+        assert_eq!(got, ["PCT 40", "PCT 40", "PCT 99", "PCT 99"]);
     }
 
     fn ps_parse_errors(name: &str, script: &str) -> String {
